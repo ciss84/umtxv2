@@ -1,0 +1,23 @@
+CACHE MANIFEST 
+#VERSION 1.1 
+
+CACHE: 
+config.js
+elfldr.elf
+etaHENByLM.bin
+index.html
+int64.js
+lndex.html
+loader.js
+main.js
+offset.js
+psfreec.js
+README.md
+rop.js
+rop_slave.js
+Style.css
+umtx2.js
+utils.js
+
+NETWORK: 
+* 
