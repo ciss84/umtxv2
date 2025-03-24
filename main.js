@@ -509,7 +509,7 @@ const IPV6_PKTINFO = 46;
  * @param {UserlandRW} p 
  * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
  */
-async function prepare(p) {
+async function prepare() {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
 
@@ -1099,5 +1099,5 @@ async function main(userlandRW) {
 }
 
 function run_hax() {
-    prepare(p);
+    main();
 }
