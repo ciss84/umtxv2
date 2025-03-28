@@ -52,6 +52,7 @@ export const KB = 1024;
 export const MB = KB * KB;
 export const GB = KB * KB * KB;
 export const page_size = 16 * KB; // page size on the ps4
+
 const isInteger = Number.isInteger;
 
 function check_not_in_range(x) {

