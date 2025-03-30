@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 1.106
+#VERSION 1.107
 
 CACHE: 
 4.00.js
@@ -30,6 +30,7 @@ Style.css
 syscalls.js
 umtx2.js
 utils.js
+websrv.elf
 
 NETWORK: 
 * 
