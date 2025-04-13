@@ -863,6 +863,10 @@ async function main(userlandRW, wkOnly = false) {
 
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
+            await new Promise(resolve => setTimeout(resolve, 8000));
+            await load_local_elf("etaHEN.bin");
+            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
+            EndTimer();
             is_elfldr_running = true;
         } else {
             await log("elfldr exited with non-zero code, port 9021 will likely not work", LogLevel.ERROR);
