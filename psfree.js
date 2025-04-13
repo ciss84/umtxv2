@@ -707,6 +707,7 @@ async function make_arw(reader, view2, pop) {
 
 window.run_psfree = async function(target) {
     // if target is a string formatted like "4.03" then convert to 0x10403
+    StartTimer();
     if (typeof target === 'string') {
         target = parseInt(target.replace('.', ''), 16) | 0x10000;
     }
