@@ -604,7 +604,7 @@ async function main(userlandRW, wkOnly = false) {
 
         is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
         await log("We escaped now? in sandbox: " + is_in_sandbox, LogLevel.INFO);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         ///////////////////////////////////////////////////////////////////////
         // Stage 6: loader
         ///////////////////////////////////////////////////////////////////////
@@ -1296,3 +1296,4 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
