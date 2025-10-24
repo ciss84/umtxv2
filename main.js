@@ -604,7 +604,7 @@ async function main(userlandRW, wkOnly = false) {
 
         is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
         await log("We escaped now? in sandbox: " + is_in_sandbox, LogLevel.INFO);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
         ///////////////////////////////////////////////////////////////////////
         // Stage 6: loader
         ///////////////////////////////////////////////////////////////////////
