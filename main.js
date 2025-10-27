@@ -605,7 +605,7 @@ async function main(userlandRW, wkOnly = false) {
         is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
         await log("We escaped now? in sandbox: " + is_in_sandbox, LogLevel.INFO);
 
-        await new Promise(resolve => setTimeout(resolve, 8000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         // Patch PS4 SDK version
         /*if (typeof OFFSET_KERNEL_PS4SDK != 'undefined') {
             await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
@@ -1303,3 +1303,4 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
