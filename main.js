@@ -863,7 +863,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            await new Promise(resolve => setTimeout(resolve, 8000));
             await load_local_elf("etaHEN.bin");
             await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
@@ -1302,7 +1302,3 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
-
-
-
-
