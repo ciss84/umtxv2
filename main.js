@@ -5,13 +5,9 @@ if (!navigator.userAgent.includes('PlayStation 5')) {
 
 const supportedFirmwares = ["4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
 const fw_idx = navigator.userAgent.indexOf('PlayStation; PlayStation 5/') + 27;
-// @ts-ignore
 window.fw_str = navigator.userAgent.substring(fw_idx, fw_idx + 4);
-// @ts-ignore
 window.fw_float = parseFloat(fw_str);
 
-// @ts-ignore
-//load offsets & webkit exploit after.
 if (!supportedFirmwares.includes(fw_str)) {
     // @ts-ignore
     alert(`This firmware(${fw_str}) is not supported.`);
@@ -1193,6 +1189,7 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
 
 
 
