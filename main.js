@@ -303,10 +303,6 @@ async function prepare(p) {
     return { p: p2, chain: chain };
 }
 
-/**
- * @param {UserlandRW} userlandRW
- * @param {boolean} wkOnly
- */
 async function main(userlandRW, wkOnly = false) {
     const debug = false;
 
@@ -724,9 +720,6 @@ async function main(userlandRW, wkOnly = false) {
 
         }
 
-        /**
-         * @returns Promise<number> - The return value of the payload
-         */
         var wait_for_elf_to_exit = async function () {
             // Join pthread and wait until we're finished executing
             await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
@@ -750,7 +743,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
-            await new Promise(resolve => setTimeout(resolve, 9000));
+            await new Promise(resolve => setTimeout(resolve, 8000));
             await load_local_elf("etaHEN.bin");
             await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
@@ -759,8 +752,6 @@ async function main(userlandRW, wkOnly = false) {
             await log("elfldr exited with non-zero code, port 9021 will likely not work", LogLevel.ERROR);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-
-        // const SOCK_NONBLOCK = 0x20000000; // for future reference, this is ignored if we're not jailbroken and explicitly setting it with fcntl returns SCE_KERNEL_ERROR_EACCES (at least on 4.03)
 
         var elf_loader_socket_fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low;
         if (elf_loader_socket_fd <= 0) {
@@ -809,28 +800,6 @@ async function main(userlandRW, wkOnly = false) {
         if (stat_buf.backing.byteLength < 0x78) {
             throw new Error("Stat buffer size too small");
         }
-
-        // struct stat {
-        //     0 __dev_t   st_dev;		/* inode's device */
-        //     4 ino_t	  st_ino;		/* inode's number */
-        //     8 mode_t	  st_mode;		/* inode protection mode */
-        //     10 nlink_t	  st_nlink;		/* number of hard links */
-        //     12 uid_t	  st_uid;		/* user ID of the file's owner */
-        //     16 gid_t	  st_gid;		/* group ID of the file's group */
-        //     20 __dev_t   st_rdev;		/* device type */
-        //     24 struct	timespec st_atim;	/* time of last access */
-        //     40 struct	timespec st_mtim;	/* time of last data modification */
-        //     56 struct	timespec st_ctim;	/* time of last file status change */
-        //     72 off_t	  st_size;		/* file size, in bytes */
-        //     80 blkcnt_t st_blocks;		/* blocks allocated for file */
-        //     88 blksize_t st_blksize;		/* optimal blocksize for I/O */
-        //     92 fflags_t  st_flags;		/* user defined flags for file */
-        //     96 __uint32_t st_gen;		/* file generation number */
-        //     100 __int32_t st_lspare;
-        //     104 struct timespec st_birthtim;	/* time of file creation */
-        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
-        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
-        // };
 
         let res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
 
@@ -939,18 +908,6 @@ async function main(userlandRW, wkOnly = false) {
                 let loops = 0;
                 while (offset < bytes_read) {
                     loops++;
-                    // struct dirent {
-                    //     __uint32_t d_fileno;		/* file number of entry */
-                    //     __uint16_t d_reclen;		/* length of this record */
-                    //     __uint8_t  d_type; 		/* file type, see below */
-                    //     __uint8_t  d_namlen;		/* length of string in d_name */
-                    // #if __BSD_VISIBLE
-                    // #define	MAXNAMLEN	255
-                    //     char	d_name[MAXNAMLEN + 1];	/* name must be no longer than this */
-                    // #else
-                    //     char	d_name[255 + 1];	/* name must be no longer than this */
-                    // #endif
-                    // };
 
                     let d_fileno = bufferDataView.getUint32(offset, true);
                     let d_reclen = bufferDataView.getUint16(offset + 4, true);
@@ -980,9 +937,6 @@ async function main(userlandRW, wkOnly = false) {
         }
     }
 
-    /**
-     * @param {function(string): void} [log]
-     */
     async function delete_appcache(log = () => { }) {
         let user_home_entries = await ls("/user/home", elf_store);
         // if we're sandboxed we'll only have one
@@ -1056,20 +1010,16 @@ async function main(userlandRW, wkOnly = false) {
         ports += "9021";
     }
 
-    // @ts-ignore
     document.getElementById('top-bar-text').innerHTML = `Listening on: <span class="fw-bold">${ip.ip}</span> (port: ${ports}) (${ip.name})`;
 
-    /** @type {Array<{payload_info: PayloadInfo, toast: HTMLElement}>} */
     let queue = [];
 
     window.addEventListener(MAINLOOP_EXECUTE_PAYLOAD_REQUEST, async function (event) {
-        /** @type {PayloadInfo} */
         let payload_info = event.detail;
         let toast = showToast(`${payload_info.displayTitle}: Waiting in queue...`, -1);
         queue.push({ payload_info, toast });
     });
 
-    // await log("Done, switching to payloads screen...", LogLevel.INFO);
     await new Promise(resolve => setTimeout(resolve, 300));
     await switchPage("payloads-view");
 
@@ -1078,7 +1028,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (queue.length > 0) {
 
-            let { payload_info, toast } = /** @type {{payload_info: PayloadInfo, toast: HTMLElement}} */ (queue.shift());
+            let { payload_info, toast } = (queue.shift());
 
             try {
                 if (payload_info.customAction) {
@@ -1093,7 +1043,7 @@ async function main(userlandRW, wkOnly = false) {
 
                     if (!payload_info.toPort) {
                         if (wkOnly) {
-                            throw new Error(); // unreachable, in wkOnly theres only buttons for payloads with toPort
+                            throw new Error();
                         }
 
                         updateToastMessage(toast, `${payload_info.displayTitle}: Parsing...`);
@@ -1187,8 +1137,8 @@ async function main(userlandRW, wkOnly = false) {
 
 let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
-// @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
+
 
 
 
