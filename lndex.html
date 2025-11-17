@@ -1,45 +1,44 @@
+<!DOCTYPE html>
 <html>
-
 <head>
+    <meta charset="UTF-8">
     <title>84Ciss UMTX2 (4.XX-5.XX)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="main.css">
 </head>
 
-<!-- body is set up as three rows: auto 1fr auto -->
 <body>
-    <!-- Row 1 -->
+    <!-- Row 1: Header -->
     <div class="p-2">
         <h1 class="text-center">Auto Jailbreak UMTX V2 (4.XX-5.XX)</h1>
-        <p class="text-center" id="top-bar-text">Current firmware: <span class="fw-bold" id="current-fw"></span></p>
-
-        <!-- This is absolute positioned to the body-->
+        <p class="text-center" id="top-bar-text">
+            Current firmware: <span class="fw-bold" id="current-fw"></span>
+        </p>
+        
+        <!-- Toast notifications container -->
         <div id="toast-container"></div>
     </div>
 
-    <!-- Row 2 -->
+    <!-- Row 2: Main Content -->
     <div id="main-content">
+        <!-- Pre-jailbreak view -->
         <div id="pre-jb-view" class="d-flex align-items-center justify-content-center flex-direction-column selected">
             <a tabindex="0" id="run-jb" onclick="run()"></a>
         </div>
 
-        <script>
-            setTimeout(() => {
-                document.getElementById('run-jb').click();
-            }, 1500);
-        </script>
-
+        <!-- Console view -->
         <div id="console-view">
             <div id="console" class="log"></div>
         </div>
 
-        <div id="payloads-view">
-        </div>
+        <!-- Payloads view -->
+        <div id="payloads-view"></div>
     </div>
 
-    <!-- Row 3 -->
+    <!-- Row 3: Footer -->
     <div class="position-relative text-center p-2 mb-2">
         <p class="text-secondary" id="version">Special thanks to idlesauce</p>
+        
         <h3 class="text-secondary mt-2">
             <a href="https://github.com/shahrilnet">@shahrilnet</a>,
             <a href="https://github.com/n0llptr">@n0llptr</a>,
@@ -49,7 +48,7 @@
             ChendoChap,
             SlidyBat,
             abc/psfree,
-            <br />
+            <br>
             idlesauce,
             <a href="https://x.com/znullptr">@znullptr</a>,
             <a href="https://twitter.com/notnotzecoxao">@notnotzecoxao</a>,
@@ -57,15 +56,23 @@
             <a href="https://github.com/john-tornblom">John Tornblom</a>,
             <a href="https://discord.gg/kbrzGuH3F6">PS5 R&D Discord</a>
         </h3>
-        <div style="background-color:#043836;color:white;position:fixed;left:0;bottom:-0px;width:100%;text-align:center;">
-        <font style='color:#87FF33'>Modder & Dev : </font>84Ciss - Find Me In Tweeter if you have any kind of issues !&nbsp;<a href="https://twitter.com/84Ciss" style='font-size:20px;text-align:center;color:yellow;'>@84Ciss</a>
-        <br><font style='color:#87FF33'>Special thanks : </font>*Many Many Thanks to all Contributors in PS4/PS5 Scene ∆❍X❑*
+        
+        <!-- L2 Redirect Button -->
         <div class="position-absolute d-flex align-items-center bottom-0 left-0 m-4">
             <div class="l2-redirect-box">L2</div>
             <span class="ml-2">Redirect</span>
         </div>
     </div>
 
+    <!-- Bottom Footer Bar -->
+    <div style="background-color:#043836; color:white; position:fixed; left:0; bottom:0; width:100%; text-align:center;">
+        <font style='color:#87FF33'>Modder & Dev : </font>84Ciss - Find Me In Tweeter if you have any kind of issues !&nbsp;
+        <a href="https://twitter.com/84Ciss" style='font-size:20px; text-align:center; color:yellow;'>@84Ciss</a>
+        <br>
+        <font style='color:#87FF33'>Special thanks : </font>*Many Many Thanks to all Contributors in PS4/PS5 Scene ∆★*
+    </div>
+
+    <!-- Core Scripts -->
     <script src="int64.js"></script>
     <script src="rop.js"></script>
     <script src="main.js"></script>
@@ -76,22 +83,33 @@
     <script type="module" src="psfree.js"></script>
     <script src="payload_map.js"></script>
 
+    <!-- Initialization Scripts -->
     <script>
+        // Auto-run jailbreak after delay
+        setTimeout(() => {
+            document.getElementById('run-jb').click();
+        }, 1500);
+        
+        // Global error handler
         addEventListener('unhandledrejection', (event) => {
             const reason = event.reason;
-            // We log the line and column numbers as well since some exceptions (like
-            // SyntaxError) do not show it in the stack trace.
             alert(
-                `${reason}\n`
-                + `${reason.sourceURL}:${reason.line}:${reason.column}\n`
-                + `${reason.stack}`
+                `${reason}\n` +
+                `${reason.sourceURL}:${reason.line}:${reason.column}\n` +
+                `${reason.stack}`
             );
             throw reason;
         });
+        
+        // Display current firmware
         document.getElementById("current-fw").innerHTML = fw_str;
+        
+        // Register event handlers
         registerAppCacheEventHandlers();
         registerL2ButtonHandler();
-        window.onload = function () {
+        
+        // Handle autoload from session storage
+        window.onload = function() {
             let autoload = sessionStorage.getItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
             if (autoload) {
                 run(autoload == "wkonly", false);
@@ -99,5 +117,4 @@
         };
     </script>
 </body>
-
 </html>
