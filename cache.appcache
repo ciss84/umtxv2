@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 2.6
+#VERSION 3.00
 
 CACHE: 
 4.00.js
@@ -35,4 +35,5 @@ websrv.elf
 stability-enhancements.js
 
 NETWORK: 
+
 * 
