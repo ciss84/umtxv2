@@ -75,8 +75,8 @@
     <!-- Core Scripts -->
     <script src="int64.js"></script>
     <script src="rop.js"></script>
-    <script src="stability-enhancements.js"></script>
     <script src="main.js"></script>
+    <script src="stability-enhancements.js"></script>
     <script src="umtx2.js"></script>
     <script src="custom_host_stuff.js"></script>
     <script src="syscalls.js"></script>
@@ -85,128 +85,54 @@
 
     <!-- Initialization Scripts -->
     <script>
-        // FIX: Meilleure gestion des erreurs globales
-        let jailbreakRunning = false;
-        let autorunTimer = null;
-
-        // Gestionnaire d'erreurs global amélioré
-        addEventListener('error', (event) => {
-            console.error('[Error]', event.error);
-            if (event.error && event.error.stack) {
-                console.error('[Stack]', event.error.stack);
-            }
-            // Ne pas bloquer l'exécution pour les erreurs mineures
-            event.preventDefault();
-        });
-
+        // Protection double exec
+        let _jbr = false;
+        
+        // Auto-run jailbreak after delay
+        setTimeout(() => {
+            if (!_jbr) document.getElementById('run-jb').click();
+        }, 1500);
+        
+        // Global error handler - NON BLOQUANT
         addEventListener('unhandledrejection', (event) => {
-            const reason = event.reason;
-            console.error('[Unhandled Promise Rejection]', reason);
-            
-            // Afficher l'erreur mais ne pas bloquer complètement
-            if (reason && reason.message && !reason.message.includes('Worker')) {
-                const errorMsg = `${reason}\n${reason.stack || ''}`;
-                console.error(errorMsg);
-            }
-            
-            event.preventDefault(); // Empêcher l'alerte par défaut
+            console.error('[JB ERROR]', event.reason);
+            event.preventDefault(); // Pas d'alerte bloquante
         });
-
-        // FIX: Fonction run améliorée avec protection contre les doubles exécutions
-        window.originalRun = window.run;
-        window.run = async function(...args) {
-            if (jailbreakRunning) {
-                console.log('[JB] Already running, ignoring...');
-                return;
-            }
-
-            jailbreakRunning = true;
-            try {
-                if (window.stabilityMonitor) {
-                    window.stabilityMonitor.logEvent('info', 'Jailbreak started');
-                }
-                
-                await window.originalRun(...args);
-                
-                if (window.stabilityMonitor) {
-                    window.stabilityMonitor.logEvent('success', 'Jailbreak completed');
-                }
-            } catch (error) {
-                console.error('[JB] Error:', error);
-                if (window.stabilityMonitor) {
-                    window.stabilityMonitor.logEvent('error', 'Jailbreak failed', { error: error.message });
-                }
-                throw error;
-            } finally {
-                jailbreakRunning = false;
-            }
-        };
-
-        // Display current firmware
+        
+        // Wrapper run() protection
+        if (typeof run === 'function') {
+            const _or = run;
+            window.run = function() {
+                if (_jbr) return;
+                _jbr = true;
+                try { return _or.apply(this, arguments); }
+                finally { setTimeout(() => _jbr = false, 1000); }
+            };
+        }
+        
+        // Display current firmware - SAFE
         try {
             document.getElementById("current-fw").innerHTML = fw_str;
-        } catch (error) {
-            console.error('[Init] Firmware display error:', error);
-        }
-
-        // Register event handlers avec protection
+        } catch(e) {}
+        
+        // Register event handlers - SAFE
         try {
-            if (typeof registerAppCacheEventHandlers === 'function') {
-                registerAppCacheEventHandlers();
-            }
-        } catch (error) {
-            console.error('[Init] AppCache handlers error:', error);
-        }
-
+            registerAppCacheEventHandlers();
+        } catch(e) {}
+        
         try {
-            if (typeof registerL2ButtonHandler === 'function') {
-                registerL2ButtonHandler();
-            }
-        } catch (error) {
-            console.error('[Init] L2 handler error:', error);
-        }
-
-        // Handle autoload from session storage
+            registerL2ButtonHandler();
+        } catch(e) {}
+        
+        // Handle autoload from session storage - SAFE
         window.onload = function() {
             try {
                 let autoload = sessionStorage.getItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
-                if (autoload && !jailbreakRunning) {
-                    console.log('[Autoload] Starting jailbreak...');
+                if (autoload && !_jbr) {
                     run(autoload == "wkonly", false);
                 }
-            } catch (error) {
-                console.error('[Autoload] Error:', error);
-            }
+            } catch(e) {}
         };
-
-        // FIX: Auto-run avec délai plus long pour la stabilité et protection
-        autorunTimer = setTimeout(() => {
-            try {
-                const runBtn = document.getElementById('run-jb');
-                if (runBtn && !jailbreakRunning) {
-                    console.log('[Auto-run] Starting jailbreak...');
-                    runBtn.click();
-                }
-            } catch (error) {
-                console.error('[Auto-run] Error:', error);
-            }
-        }, 2000); // Augmenté de 1.5s à 2s pour plus de stabilité
-
-        // FIX: Cleanup au déchargement de la page
-        window.addEventListener('beforeunload', () => {
-            if (autorunTimer) {
-                clearTimeout(autorunTimer);
-            }
-        });
-
-        // FIX: Monitoring de la santé du système
-        if (window.systemHealthChecker) {
-            setInterval(() => {
-                window.systemHealthChecker.runHealthCheck().catch(err => {
-                    console.warn('[Health] Check failed:', err);
-                });
-            }, 30000); // Check toutes les 30 secondes
-        }
     </script>
 </body>
 </html>
