@@ -29,7 +29,7 @@
     <div id="main-content">
         <!-- Pre-jailbreak view -->
         <div id="pre-jb-view" class="d-flex align-items-center justify-content-center flex-direction-column selected">
-            <a tabindex="0" id="run-jb" onclick="run()"></a>
+            <a tabindex="0" id="run-jb" onclick="safeRun()"></a>
         </div>
 
         <!-- Console view -->
@@ -91,53 +91,93 @@
 
     <!-- Initialization Scripts -->
     <script>
-        // Protection double exec
-        let _jbr = false;
+        // Protection contre double exécution - GLOBAL
+        let _jbRunning = false;
+        let _jbCompleted = false;
         
-        // Auto-run jailbreak after delay
-        setTimeout(() => {
-            if (!_jbr) document.getElementById('run-jb').click();
+        // Wrapper sécurisé pour la fonction run()
+        function safeRun() {
+            if (_jbRunning || _jbCompleted) {
+                console.log("Jailbreak already running or completed");
+                return;
+            }
+            
+            _jbRunning = true;
+            
+            if (typeof run === 'function') {
+                try {
+                    run();
+                } catch(e) {
+                    console.error("Error running jailbreak:", e);
+                    _jbRunning = false;
+                }
+            } else {
+                console.error("run() function not defined");
+                _jbRunning = false;
+            }
+        }
+        
+        // Auto-run jailbreak après un délai
+        let autoRunTimeout = setTimeout(() => {
+            if (!_jbRunning && !_jbCompleted) {
+                const runButton = document.getElementById('run-jb');
+                if (runButton) {
+                    runButton.click();
+                }
+            }
         }, 1500);
         
         // Global error handler - NON BLOQUANT
         addEventListener('unhandledrejection', (event) => {
-            console.error('[JB ERROR]', event.reason);
-            event.preventDefault(); // Pas d'alerte bloquante
+            console.error('[JB ERROR - Unhandled Rejection]', event.reason);
+            event.preventDefault(); // Empêcher les alertes bloquantes
         });
         
-        // Wrapper run() protection
-        if (typeof run === 'function') {
-            const _or = run;
-            window.run = function() {
-                if (_jbr) return;
-                _jbr = true;
-                try { return _or.apply(this, arguments); }
-                finally { setTimeout(() => _jbr = false, 1000); }
-            };
-        }
+        addEventListener('error', (event) => {
+            console.error('[JB ERROR - Error]', event.error);
+            event.preventDefault(); // Empêcher les alertes bloquantes
+            return true;
+        });
         
         // Display current firmware - SAFE
         try {
-            document.getElementById("current-fw").innerHTML = fw_str;
-        } catch(e) {}
+            if (typeof fw_str !== 'undefined') {
+                document.getElementById("current-fw").innerHTML = fw_str;
+            }
+        } catch(e) {
+            console.error("Error displaying firmware:", e);
+        }
         
         // Register event handlers - SAFE
         try {
-            registerAppCacheEventHandlers();
-        } catch(e) {}
+            if (typeof registerAppCacheEventHandlers === 'function') {
+                registerAppCacheEventHandlers();
+            }
+        } catch(e) {
+            console.error("Error registering app cache handlers:", e);
+        }
         
         try {
-            registerL2ButtonHandler();
-        } catch(e) {}
+            if (typeof registerL2ButtonHandler === 'function') {
+                registerL2ButtonHandler();
+            }
+        } catch(e) {
+            console.error("Error registering L2 handler:", e);
+        }
         
         // Handle autoload from session storage - SAFE
         window.onload = function() {
             try {
-                let autoload = sessionStorage.getItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
-                if (autoload && !_jbr) {
-                    run(autoload == "wkonly", false);
+                if (typeof SESSIONSTORE_ON_LOAD_AUTORUN_KEY !== 'undefined') {
+                    let autoload = sessionStorage.getItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
+                    if (autoload && !_jbRunning && !_jbCompleted && typeof run === 'function') {
+                        clearTimeout(autoRunTimeout); // Cancel le timeout si on fait un autoload
+                        run(autoload == "wkonly", false);
+                    }
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.error("Error handling autoload:", e);
+            }
         };
     </script>
 </body>
