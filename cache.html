@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html manifest="cache.appcache">
+<head>
+    <meta charset="UTF-8">
+    <title>Host Auto Cache(FW 4.XX-5.XX)</title>
+    <link rel="stylesheet prefetch" href="Style.css">
+    <script>
+        history.replaceState(null, null, 'index.html');
+    </script>
+</head>
+
+<style>
+body {
+    font-family: system-ui;
+    text-align: center;
+    background-color: #111112;
+    color: white;
+}
+h1 {
+    color: #fff;
+    font-size: 46px;
+    font-weight: bold;
+    text-shadow: 3px 2px #3d3939;
+}
+#progress {
+    font-size: 35px;
+    font-weight: bold;
+    text-shadow: 3px 2px #3d3939;
+    color: #fff;
+}
+.ready {
+    color: #87FF33;
+}
+</style>
+
+<body>
+    <br><br><br>
+    <h1><i>PS5 Jailbreak Auto Cache (Fw 4.XX-5.XX)</i></h1>
+    <br><br><br><br>
+    <div id="progress">
+        Caching files, please wait...
+    </div>
+    <br><br><br><br><br><br>
+    
+    <!-- Footer -->
+    <div style="background-color:#043836; color:white; position:fixed; left:0; bottom:0; width:100%; text-align:center;">
+        <font style='color:#87FF33'>Modder & Dev : </font>
+        <a href="https://twitter.com/84Ciss" style='font-size:20px; text-align:center; color:yellow;'>@84Ciss</a>
+        - Find Me In Twitter if you have any kind of issues !
+        <br>
+        <font style='color:#87FF33'>Special thanks : </font>*Many Many Thanks to all Contributors in PS4/PS5 Scene ★*
+    </div>
+
+    <script>
+        var progress = document.getElementById('progress');
+        
+        // Événement quand les fichiers sont mis en cache pour la première fois
+        window.applicationCache.addEventListener('cached', function() {
+            progress.innerHTML = '<span class="ready">Cache complete! Redirecting...</span>';
+            localStorage.setItem("ps5_cached", "true");
+            setTimeout(function() {
+                window.location.replace("index.html");
+            }, 1000);
+        }, false);
+        
+        // Événement quand le cache est mis à jour
+        window.applicationCache.addEventListener('updateready', function() {
+            progress.innerHTML = '<span class="ready">Cache updated! Redirecting...</span>';
+            localStorage.setItem("ps5_cached", "true");
+            setTimeout(function() {
+                window.location.replace("index.html");
+            }, 1000);
+        }, false);
+        
+        // Si déjà en cache (IDLE ou UPDATEREADY), rediriger immédiatement
+        if (window.applicationCache.status == 1 || window.applicationCache.status == 4) {
+            progress.innerHTML = '<span class="ready">Already cached! Redirecting...</span>';
+            localStorage.setItem("ps5_cached", "true");
+            setTimeout(function() {
+                window.location.replace("index.html");
+            }, 500);
+        }
+        
+        // Gestion des erreurs de cache
+        window.applicationCache.addEventListener('error', function() {
+            progress.innerHTML = '<span style="color:#ee596f">Cache error! Redirecting anyway...</span>';
+            localStorage.setItem("ps5_cached", "true");
+            setTimeout(function() {
+                window.location.replace("index.html");
+            }, 2000);
+        }, false);
+        
+        // Événement: Pas de mise à jour
+        window.applicationCache.addEventListener('noupdate', function() {
+            progress.innerHTML = '<span class="ready">No update needed! Redirecting...</span>';
+            localStorage.setItem("ps5_cached", "true");
+            setTimeout(function() {
+                window.location.replace("index.html");
+            }, 500);
+        }, false);
+    </script>
+</body>
+</html>
