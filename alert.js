@@ -15,33 +15,35 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-// IMPROVED VERSION - NON-BLOCKING ERROR HANDLING
-// Instead of blocking alerts, we log to console and continue execution
+// We can't just open a console on the ps4 browser, make sure the errors thrown
+// by our program are alerted. We use alert() instead of debug_log() because
+// while we are developing, we may modify the utils.js module and introduce
+// bugs. We can not use debug_log() if it throws an error.
+
+// We log the line and column numbers as well since some exceptions (like
+// SyntaxError) do not show it in the stack trace.
 
 addEventListener('unhandledrejection', event => {
     const reason = event.reason;
-    console.error(
-        'Unhandled rejection',
-        reason,
-        `${reason.sourceURL}:${reason.line}:${reason.column}`,
-        reason.stack
+    alert(
+        'Unhandled rejection\n'
+        + `${reason}\n`
+        + `${reason.sourceURL}:${reason.line}:${reason.column}\n`
+        + `${reason.stack}`
     );
-    // Prevent default behavior (no alert popup)
-    event.preventDefault();
 });
 
 addEventListener('error', event => {
     const reason = event.error;
-    console.error(
-        'Unhandled error',
-        reason,
-        `${reason.sourceURL}:${reason.line}:${reason.column}`,
-        reason.stack
+    alert(
+        'Unhandled error\n'
+        + `${reason}\n`
+        + `${reason.sourceURL}:${reason.line}:${reason.column}\n`
+        + `${reason.stack}`
     );
-    // Prevent default behavior (no alert popup)
-    event.preventDefault();
     return true;
 });
 
-// we have to dynamically import the program if we want to catch its syntax errors
+// we have to dynamically import the program if we want to catch its syntax
+// errors
 import('./psfree.js');

@@ -1,12 +1,12 @@
 // @ts-check
 
 const LOCALSTORE_REDIRECTOR_LAST_URL_KEY = "redirector_last_url";
+
 const SESSIONSTORE_ON_LOAD_AUTORUN_KEY = "on_load_autorun";
+
 const MAINLOOP_EXECUTE_PAYLOAD_REQUEST = "mainloop_execute_payload_request";
 
 let exploitStarted = false;
-let retryCount = 0;
-const MAX_RETRIES = 3;
 
 async function run(wkonly = false, animate = true) {
     if (exploitStarted) {
@@ -16,52 +16,40 @@ async function run(wkonly = false, animate = true) {
 
     await switchPage("console-view", animate);
 
-    // Set session storage for auto-retry on crash
+    // not setting it in the catch since we want to retry both on a handled error and on a browser crash
     sessionStorage.setItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY, wkonly ? "wkonly" : "kernel");
 
     try {
         if (!animate) {
-            // Small delay helps stability when auto-running
+            // hack but waiting a bit seems to help
+            // this only gets hit when auto-running on page load
             await new Promise((resolve) => setTimeout(resolve, 100));
         }
         await run_psfree(fw_str);
 
     } catch (error) {
         log("Webkit exploit failed: " + error, LogLevel.ERROR);
-        
-        retryCount++;
-        if (retryCount < MAX_RETRIES) {
-            log(`Retrying (${retryCount}/${MAX_RETRIES}) in 2 seconds...`, LogLevel.LOG);
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            exploitStarted = false; // Reset flag for retry
-            window.location.reload();
-        } else {
-            log("Max retries reached. Please refresh manually.", LogLevel.ERROR);
-            sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
-        }
-        return;
+
+        log("Retrying in 2 seconds...", LogLevel.LOG);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        window.location.reload();
+        return; // this is necessary
     }
 
     try {
         await main(window.p, wkonly); // if all goes well, this should block forever
     } catch (error) {
         log("Kernel exploit/main() failed: " + error, LogLevel.ERROR);
-        
-        retryCount++;
-        if (retryCount < MAX_RETRIES) {
-            log(`Retrying (${retryCount}/${MAX_RETRIES}) in 4 seconds...`, LogLevel.LOG);
-            await new Promise((resolve) => setTimeout(resolve, 4000));
-            window.location.reload();
-        } else {
-            log("Max retries reached. Please refresh manually.", LogLevel.ERROR);
-            sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
-        }
-        return;
+        // p.write8(new int64(0,0), 0); // crash
     }
+
+    log("Retrying in 4 seconds...", LogLevel.LOG);
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    window.location.reload();
 }
 
 function exploit(){
-    run();
+run();
 }
 
 async function switchPage(id, animate = true) {
@@ -77,6 +65,7 @@ async function switchPage(id, animate = true) {
         if (animate) {
             let oldSelectedElementTransitionEnd = new Promise((resolve) => {
                 oldSelectedElement.addEventListener("transitionend", function handler(event) {
+                    // we get back transitionend for children too but we don't want that
                     if (event.target === oldSelectedElement) {
                         oldSelectedElement.removeEventListener("transitionend", handler);
                         resolve();
@@ -86,6 +75,7 @@ async function switchPage(id, animate = true) {
             oldSelectedElement.classList.remove('selected');
             await oldSelectedElementTransitionEnd;
         } else {
+            // override transition with none for instant switch
             oldSelectedElement.style.setProperty('transition', 'none', 'important');
             oldSelectedElement.offsetHeight;
             oldSelectedElement.classList.remove('selected');
@@ -97,6 +87,7 @@ async function switchPage(id, animate = true) {
     if (animate) {
         let targetElementTransitionEnd = new Promise((resolve) => {
             targetElement.addEventListener("transitionend", function handler(event) {
+                // we get back transitionend for children too but we don't want that
                 if (event.target === targetElement) {
                     targetElement.removeEventListener("transitionend", handler);
                     resolve();
@@ -106,6 +97,7 @@ async function switchPage(id, animate = true) {
         targetElement.classList.add('selected');
         await targetElementTransitionEnd;
     } else {
+        // override transition with none for instant switch
         targetElement.style.setProperty('transition', 'none', 'important');
         targetElement.offsetHeight;
         targetElement.classList.add('selected');
@@ -113,6 +105,7 @@ async function switchPage(id, animate = true) {
         targetElement.style.removeProperty('transition');
     }
 }
+
 
 function registerAppCacheEventHandlers() {
     var appCache = window.applicationCache;
@@ -138,6 +131,7 @@ function registerAppCacheEventHandlers() {
         if (!navigator.onLine) {
             createOrUpdateAppCacheToast('Offline.', 2000);
         } else {
+            // this is redundant
             createOrUpdateAppCacheToast("Checking for updates...");
         }
     }
@@ -155,6 +149,7 @@ function registerAppCacheEventHandlers() {
     }, false);
 
     appCache.addEventListener('error', function (e) {
+        // only show error toast if we're online
         if (navigator.onLine) {
             createOrUpdateAppCacheToast('Error while caching site.', 5000);
         } else {
@@ -175,6 +170,9 @@ function registerAppCacheEventHandlers() {
 
         createOrUpdateAppCacheToast('Downloading new cache... ' + percentage + '%');
 
+        // the last item takes an unreasonably long time to complete (with a big update)
+        // ig its doing some extra stuff before the last event is fired
+        // so show a new message for it
         if (e.loaded + 1 == e.total) {
             createOrUpdateAppCacheToast("Processing... This may take a minute.");
         }
@@ -193,6 +191,7 @@ function registerL2ButtonHandler() {
             const lastRedirectorValue = localStorage.getItem(LOCALSTORE_REDIRECTOR_LAST_URL_KEY) || "http://";
             const redirectorValue = prompt("Enter url", lastRedirectorValue);
 
+            // pressing cancel works as expected, but pressing the back button unfortunately is the same as pressing ok
             if (redirectorValue && redirectorValue !== "http://") {
                 localStorage.setItem(LOCALSTORE_REDIRECTOR_LAST_URL_KEY, redirectorValue);
                 window.location.href = redirectorValue;
@@ -243,6 +242,7 @@ async function removeToast(toast) {
     });
 }
 
+
 function populatePayloadsPage(wkOnlyMode = false) {
     const payloadsView = document.getElementById('payloads-view');
 
@@ -287,26 +287,9 @@ function populatePayloadsPage(wkOnlyMode = false) {
 
         payloadsView.appendChild(payloadButton);
     }
+
 }
 
-function CalcTime(dur){
-    hrs=Math.floor(dur/1000/60/60);
-    min=Math.floor(dur/1000/60-hrs*60);
-    sec=Math.floor(dur/1000-min*60);
-    mil=dur.toString().slice(-3);
-    if (min!=0){
-        ShowDuration=" - WK Exploited In : "+min+" minute"+(min==1?"":"s")+", "+sec+" second"+(sec==1?"":"s");
-    } else {
-        ShowDuration=" - Exploited In: "+sec+" second"+(sec==1?"":"s");
-    }
-}
-
-function StartTimer(){
-    StartTime=Date.now();
-}
-
-function EndTimer(){
-    EndTime=Date.now();
-    CalcTime(EndTime=Date.now()-StartTime);
-    document.title+=ShowDuration;
-}
+function CalcTime(dur){hrs=Math.floor(dur/1000/60/60);min=Math.floor(dur/1000/60-hrs*60);sec=Math.floor(dur/1000-min*60);mil=dur.toString().slice(-3);if (min!=0){ShowDuration=" - WK Exploited In : "+min+" minute"+(min==1?"":"s")+", "+sec+" second"+(sec==1?"":"s");}else {ShowDuration=" - Exploited In: "+sec+" second"+(sec==1?"":"s");}}
+function StartTimer(){StartTime=Date.now();}
+function EndTimer(){EndTime=Date.now();CalcTime(EndTime=Date.now()-StartTime);document.title+=ShowDuration;}
