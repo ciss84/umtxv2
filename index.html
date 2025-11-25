@@ -5,6 +5,65 @@
     <title>84Ciss UMTX2 (4.XX-5.XX)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="main.css">
+    <style>
+        /* Bouton Clear Cache */
+        .clear-cache-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: #ff5555;
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            z-index: 9999;
+            transition: all 0.3s;
+        }
+        .clear-cache-btn:hover {
+            background-color: #ff7777;
+            transform: scale(1.05);
+        }
+        
+        /* Notification de mise à jour */
+        .update-notification {
+            position: fixed;
+            top: 60px;
+            right: 10px;
+            background-color: #87FF33;
+            color: #111112;
+            padding: 15px 25px;
+            border-radius: 8px;
+            z-index: 9998;
+            display: none;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .update-notification button {
+            background-color: #111112;
+            color: #87FF33;
+            border: none;
+            padding: 8px 15px;
+            margin-left: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
     <script>
         // Vérifier si le cache est prêt, sinon rediriger vers cache.html
         if (!localStorage.getItem("ps5_cached")) {
@@ -14,6 +73,16 @@
 </head>
 
 <body>
+    <!-- Bouton Clear Cache -->
+    <button class="clear-cache-btn" onclick="clearCache()">🗑️ Clear Cache</button>
+    
+    <!-- Notification de mise à jour -->
+    <div class="update-notification" id="update-notification">
+        ⚠️ Mise à jour disponible !
+        <button onclick="applyUpdate()">Recharger</button>
+        <button onclick="dismissUpdate()">Plus tard</button>
+    </div>
+
     <!-- Row 1: Header -->
     <div class="p-2">
         <h1 class="text-center">Auto Jailbreak UMTX V2 (4.XX-5.XX)</h1>
@@ -88,6 +157,95 @@
     <script src="syscalls.js"></script>
     <script type="module" src="psfree.js"></script>
     <script src="payload_map.js"></script>
+
+    <!-- Cache Management Scripts -->
+    <script>
+        // Fonction Clear Cache
+        function clearCache() {
+            if (confirm('Voulez-vous vraiment effacer le cache ?\n\nCela vous redirigera vers cache.html pour re-télécharger les fichiers.')) {
+                try {
+                    // Effacer localStorage
+                    localStorage.removeItem("ps5_cached");
+                    
+                    // Effacer sessionStorage
+                    sessionStorage.clear();
+                    
+                    // Rediriger vers cache.html
+                    window.location.replace("cache.html");
+                } catch(e) {
+                    alert('Erreur lors du nettoyage du cache : ' + e.message);
+                }
+            }
+        }
+        
+        // Fonction pour appliquer la mise à jour
+        function applyUpdate() {
+            try {
+                window.applicationCache.swapCache();
+                window.location.reload();
+            } catch(e) {
+                console.error('Erreur lors de la mise à jour:', e);
+                window.location.reload();
+            }
+        }
+        
+        // Fonction pour ignorer la mise à jour
+        function dismissUpdate() {
+            document.getElementById('update-notification').style.display = 'none';
+        }
+        
+        // Détection des mises à jour du cache
+        if (window.applicationCache) {
+            var appCache = window.applicationCache;
+            
+            // Vérifier les mises à jour au chargement
+            appCache.addEventListener('checking', function(e) {
+                console.log('[Cache] Vérification des mises à jour...');
+            }, false);
+            
+            // Mise à jour disponible
+            appCache.addEventListener('updateready', function(e) {
+                console.log('[Cache] Mise à jour disponible !');
+                if (appCache.status == appCache.UPDATEREADY) {
+                    // Afficher la notification
+                    document.getElementById('update-notification').style.display = 'block';
+                    
+                    // Créer un toast aussi
+                    if (typeof showToast === 'function') {
+                        showToast('⚠️ Mise à jour du cache disponible !', 5000);
+                    }
+                }
+            }, false);
+            
+            // Cache à jour
+            appCache.addEventListener('noupdate', function(e) {
+                console.log('[Cache] Cache à jour ✅');
+            }, false);
+            
+            // Erreur de cache
+            appCache.addEventListener('error', function(e) {
+                console.error('[Cache] Erreur de mise à jour du cache');
+            }, false);
+            
+            // Cache complet
+            appCache.addEventListener('cached', function(e) {
+                console.log('[Cache] Fichiers mis en cache avec succès');
+            }, false);
+            
+            // Téléchargement en cours
+            appCache.addEventListener('downloading', function(e) {
+                console.log('[Cache] Téléchargement des mises à jour...');
+            }, false);
+            
+            // Progression
+            appCache.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    var percent = Math.round((e.loaded / e.total) * 100);
+                    console.log('[Cache] Progression: ' + percent + '%');
+                }
+            }, false);
+        }
+    </script>
 
     <!-- Initialization Scripts -->
     <script>
