@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html manifest="cache.appcache">
 <head>
     <meta charset="UTF-8">
     <title>84Ciss UMTX2 (4.XX-5.XX)</title>
@@ -214,6 +214,12 @@
                     if (typeof showToast === 'function') {
                         showToast('⚠️ Mise à jour du cache disponible !', 5000);
                     }
+                    
+                    // Auto-reload après 3 secondes si pas de réponse
+                    setTimeout(function() {
+                        console.log('[Cache] Application automatique de la mise à jour...');
+                        applyUpdate();
+                    }, 3000);
                 }
             }, false);
             
@@ -251,10 +257,27 @@
     <script>
         // Protection double exec
         let _jbr = false;
+        let _cacheUpdating = false;
         
-        // Auto-run jailbreak after delay
+        // Vérifier si le cache est en train de se mettre à jour
+        if (window.applicationCache) {
+            var appCacheStatus = window.applicationCache.status;
+            
+            // Si le cache est en train de télécharger ou de se mettre à jour, BLOQUER le jailbreak
+            if (appCacheStatus === window.applicationCache.DOWNLOADING || 
+                appCacheStatus === window.applicationCache.CHECKING) {
+                _cacheUpdating = true;
+                console.log('[JB] Cache en cours de mise à jour - Jailbreak bloqué');
+            }
+        }
+        
+        // Auto-run jailbreak after delay SEULEMENT si le cache n'est pas en train de se mettre à jour
         setTimeout(() => {
-            if (!_jbr) document.getElementById('run-jb').click();
+            if (!_jbr && !_cacheUpdating) {
+                document.getElementById('run-jb').click();
+            } else if (_cacheUpdating) {
+                console.log('[JB] Jailbreak auto-run annulé - Cache en cours de mise à jour');
+            }
         }, 1500);
         
         // Global error handler - NON BLOQUANT
