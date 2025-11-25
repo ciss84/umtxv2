@@ -53,50 +53,43 @@ h1 {
 
     <script>
         var progress = document.getElementById('progress');
+        var redirected = false;
+        
+        function redirectToIndex() {
+            if (redirected) return;
+            redirected = true;
+            localStorage.setItem("ps5_cached", "true");
+            window.location.replace("index.html");
+        }
         
         // Événement quand les fichiers sont mis en cache pour la première fois
         window.applicationCache.addEventListener('cached', function() {
             progress.innerHTML = '<span class="ready">Cache complete! Redirecting...</span>';
-            localStorage.setItem("ps5_cached", "true");
-            setTimeout(function() {
-                window.location.replace("index.html");
-            }, 1000);
+            setTimeout(redirectToIndex, 800);
         }, false);
         
         // Événement quand le cache est mis à jour
         window.applicationCache.addEventListener('updateready', function() {
             progress.innerHTML = '<span class="ready">Cache updated! Redirecting...</span>';
-            localStorage.setItem("ps5_cached", "true");
-            setTimeout(function() {
-                window.location.replace("index.html");
-            }, 1000);
+            setTimeout(redirectToIndex, 800);
         }, false);
         
         // Si déjà en cache (IDLE ou UPDATEREADY), rediriger immédiatement
         if (window.applicationCache.status == 1 || window.applicationCache.status == 4) {
             progress.innerHTML = '<span class="ready">Already cached! Redirecting...</span>';
-            localStorage.setItem("ps5_cached", "true");
-            setTimeout(function() {
-                window.location.replace("index.html");
-            }, 500);
+            setTimeout(redirectToIndex, 300);
         }
         
         // Gestion des erreurs de cache
         window.applicationCache.addEventListener('error', function() {
             progress.innerHTML = '<span style="color:#ee596f">Cache error! Redirecting anyway...</span>';
-            localStorage.setItem("ps5_cached", "true");
-            setTimeout(function() {
-                window.location.replace("index.html");
-            }, 2000);
+            setTimeout(redirectToIndex, 1500);
         }, false);
         
         // Événement: Pas de mise à jour
         window.applicationCache.addEventListener('noupdate', function() {
             progress.innerHTML = '<span class="ready">No update needed! Redirecting...</span>';
-            localStorage.setItem("ps5_cached", "true");
-            setTimeout(function() {
-                window.location.replace("index.html");
-            }, 500);
+            setTimeout(redirectToIndex, 300);
         }, false);
     </script>
 </body>

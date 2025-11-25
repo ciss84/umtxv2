@@ -207,19 +207,15 @@
             appCache.addEventListener('updateready', function(e) {
                 console.log('[Cache] Mise à jour disponible !');
                 if (appCache.status == appCache.UPDATEREADY) {
-                    // Afficher la notification
-                    document.getElementById('update-notification').style.display = 'block';
-                    
-                    // Créer un toast aussi
-                    if (typeof showToast === 'function') {
-                        showToast('⚠️ Mise à jour du cache disponible !', 5000);
+                    // Appliquer immédiatement la mise à jour et recharger
+                    console.log('[Cache] Application automatique de la mise à jour...');
+                    try {
+                        appCache.swapCache();
+                    } catch(ex) {
+                        console.error('[Cache] Erreur swapCache:', ex);
                     }
-                    
-                    // Auto-reload après 3 secondes si pas de réponse
-                    setTimeout(function() {
-                        console.log('[Cache] Application automatique de la mise à jour...');
-                        applyUpdate();
-                    }, 3000);
+                    // Reload immédiat
+                    window.location.reload();
                 }
             }, false);
             
@@ -263,20 +259,26 @@
         if (window.applicationCache) {
             var appCacheStatus = window.applicationCache.status;
             
-            // Si le cache est en train de télécharger ou de se mettre à jour, BLOQUER le jailbreak
-            if (appCacheStatus === window.applicationCache.DOWNLOADING || 
-                appCacheStatus === window.applicationCache.CHECKING) {
+            // Si le cache est en train de télécharger, BLOQUER le jailbreak
+            // IDLE (1) = OK pour jailbreak
+            // CHECKING (2) = attendre
+            // DOWNLOADING (3) = attendre
+            if (appCacheStatus === window.applicationCache.CHECKING || 
+                appCacheStatus === window.applicationCache.DOWNLOADING) {
                 _cacheUpdating = true;
                 console.log('[JB] Cache en cours de mise à jour - Jailbreak bloqué');
+            } else {
+                console.log('[JB] Cache status:', appCacheStatus, '- Jailbreak autorisé');
             }
         }
         
-        // Auto-run jailbreak after delay SEULEMENT si le cache n'est pas en train de se mettre à jour
+        // Auto-run jailbreak after delay SEULEMENT si le cache est prêt
         setTimeout(() => {
             if (!_jbr && !_cacheUpdating) {
+                console.log('[JB] Lancement automatique du jailbreak...');
                 document.getElementById('run-jb').click();
             } else if (_cacheUpdating) {
-                console.log('[JB] Jailbreak auto-run annulé - Cache en cours de mise à jour');
+                console.log('[JB] Jailbreak auto-run annulé - Cache pas encore prêt');
             }
         }, 1500);
         
