@@ -1,10 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html manifest="cache.appcache">
 <head>
     <meta charset="UTF-8">
     <title>84Ciss UMTX2 (4.XX-5.XX)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="main.css">
+    <style>
+        /* Bouton Clear Cache */
+        .clear-cache-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: #ff5555;
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            z-index: 9999;
+            transition: all 0.3s;
+        }
+        .clear-cache-btn:hover {
+            background-color: #ff7777;
+            transform: scale(1.05);
+        }
+    </style>
     <script>
         // Vérifier si le cache est prêt, sinon rediriger vers cache.html
         if (!localStorage.getItem("ps5_cached")) {
@@ -14,6 +35,9 @@
 </head>
 
 <body>
+    <!-- Bouton Clear Cache -->
+    <button class="clear-cache-btn" onclick="clearCache()">🗑️ Clear Cache</button>
+
     <!-- Row 1: Header -->
     <div class="p-2">
         <h1 class="text-center">Auto Jailbreak UMTX V2 (4.XX-5.XX)</h1>
@@ -88,6 +112,76 @@
     <script src="syscalls.js"></script>
     <script type="module" src="psfree.js"></script>
     <script src="payload_map.js"></script>
+
+    <!-- Cache Management Scripts -->
+    <script>
+        // Fonction Clear Cache
+        function clearCache() {
+            if (confirm('Voulez-vous vraiment effacer le cache ?\n\nCela vous redirigera vers cache.html.')) {
+                try {
+                    localStorage.removeItem("ps5_cached");
+                    sessionStorage.clear();
+                    window.location.replace("cache.html");
+                } catch(e) {
+                    alert('Erreur: ' + e.message);
+                }
+            }
+        }
+        
+        // Détection automatique des mises à jour du cache
+        if (window.applicationCache) {
+            var appCache = window.applicationCache;
+            
+            // Mise à jour disponible - REDIRIGER VERS CACHE.HTML
+            appCache.addEventListener('updateready', function(e) {
+                console.log('[Cache] Mise à jour disponible !');
+                if (appCache.status == appCache.UPDATEREADY) {
+                    console.log('[Cache] Redirection vers cache.html pour mise à jour...');
+                    
+                    // Créer un toast si possible
+                    if (typeof showToast === 'function') {
+                        showToast('⚠️ Mise à jour détectée ! Rechargement...', 2000);
+                    }
+                    
+                    // Effacer le flag de cache pour forcer le re-téléchargement
+                    localStorage.removeItem("ps5_cached");
+                    
+                    // Rediriger vers cache.html après 1 seconde
+                    setTimeout(function() {
+                        window.location.replace("cache.html");
+                    }, 1000);
+                }
+            }, false);
+            
+            // Logs pour debug
+            appCache.addEventListener('checking', function(e) {
+                console.log('[Cache] Vérification des mises à jour...');
+            }, false);
+            
+            appCache.addEventListener('downloading', function(e) {
+                console.log('[Cache] Téléchargement de la mise à jour...');
+            }, false);
+            
+            appCache.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    var percent = Math.round((e.loaded / e.total) * 100);
+                    console.log('[Cache] Progression: ' + percent + '%');
+                }
+            }, false);
+            
+            appCache.addEventListener('cached', function(e) {
+                console.log('[Cache] Fichiers mis en cache ✅');
+            }, false);
+            
+            appCache.addEventListener('noupdate', function(e) {
+                console.log('[Cache] Cache à jour ✅');
+            }, false);
+            
+            appCache.addEventListener('error', function(e) {
+                console.error('[Cache] Erreur de mise à jour');
+            }, false);
+        }
+    </script>
 
     <!-- Initialization Scripts -->
     <script>
