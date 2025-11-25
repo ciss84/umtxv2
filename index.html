@@ -132,25 +132,15 @@
         if (window.applicationCache) {
             var appCache = window.applicationCache;
             
-            // Mise à jour disponible - REDIRIGER VERS CACHE.HTML
-            appCache.addEventListener('updateready', function(e) {
-                console.log('[Cache] Mise à jour disponible !');
-                if (appCache.status == appCache.UPDATEREADY) {
-                    console.log('[Cache] Redirection vers cache.html pour mise à jour...');
-                    
-                    // Créer un toast si possible
-                    if (typeof showToast === 'function') {
-                        showToast('⚠️ Mise à jour détectée ! Rechargement...', 2000);
-                    }
-                    
-                    // Effacer le flag de cache pour forcer le re-téléchargement
-                    localStorage.removeItem("ps5_cached");
-                    
-                    // Rediriger vers cache.html après 1 seconde
-                    setTimeout(function() {
-                        window.location.replace("cache.html");
-                    }, 1000);
-                }
+            // DÉTECTER LE DOWNLOADING - Rediriger vers cache.html
+            appCache.addEventListener('downloading', function(e) {
+                console.log('[Cache] Téléchargement détecté - Redirection vers cache.html...');
+                
+                // Effacer le flag pour forcer cache.html à tout re-télécharger
+                localStorage.removeItem("ps5_cached");
+                
+                // Rediriger immédiatement vers cache.html
+                window.location.replace("cache.html");
             }, false);
             
             // Logs pour debug
@@ -158,8 +148,8 @@
                 console.log('[Cache] Vérification des mises à jour...');
             }, false);
             
-            appCache.addEventListener('downloading', function(e) {
-                console.log('[Cache] Téléchargement de la mise à jour...');
+            appCache.addEventListener('updateready', function(e) {
+                console.log('[Cache] Mise à jour prête');
             }, false);
             
             appCache.addEventListener('progress', function(e) {
