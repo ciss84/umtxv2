@@ -25,6 +25,22 @@
             background-color: #ff7777;
             transform: scale(1.05);
         }
+
+        /* Bouton L2 Redirect */
+        .l2-redirect-box {
+            background-color: #5555ff;
+            color: white;
+            border: 2px solid white;
+            padding: 8px 16px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .l2-redirect-box:hover {
+            background-color: #7777ff;
+            transform: scale(1.05);
+        }
     </style>
     <script>
         // Vérifier si le cache est prêt, sinon rediriger vers cache.html
@@ -37,6 +53,12 @@
 <body>
     <!-- Bouton Clear Cache -->
     <button class="clear-cache-btn" onclick="clearCache()">🗑️ Clear Cache</button>
+
+    <!-- L2 Redirect Button -->
+    <div class="position-absolute d-flex align-items-center top-0 left-0 m-4">
+        <div class="l2-redirect-box">L2</div>
+        <span class="ml-2">Redirect</span>
+    </div>
 
     <!-- Row 1: Header -->
     <div class="p-2">
@@ -86,12 +108,6 @@
             <a href="https://github.com/john-tornblom">John Tornblom</a>,
             <a href="https://discord.gg/kbrzGuH3F6">PS5 R&D Discord</a>
         </h3>
-        
-        <!-- L2 Redirect Button -->
-        <div class="position-absolute d-flex align-items-center top-0 left-0 m-4">
-            <div class="l2-redirect-box">L2</div>
-            <span class="ml-2">Redirect</span>
-        </div>
     </div>
 
     <!-- Bottom Footer Bar -->
