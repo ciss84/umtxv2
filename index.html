@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>84Ciss UMTX2 (4.XX-5.XX)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
+    <link rel="stylesheet" href="main.css">
     <style>
         /* Bouton Clear Cache */
         .clear-cache-btn {
@@ -35,16 +35,8 @@
 </head>
 
 <body>
-    <!-- Bouton L2 Redirect -->
-    <div class="position-absolute d-flex align-items-center top-0 left-0 m-4">
-        <div class="l2-redirect-box">L2</div>
-        <span class="ml-2">Redirect</span>
-    </div>
-    
     <!-- Bouton Clear Cache -->
-    <div class="position-absolute d-flex align-items-center top-0 right-0 m-4" onclick="clearCache()" style="cursor: pointer;">
-        <span class="mr-2">🗑️ Clear Cache</span>
-    </div>
+    <button class="clear-cache-btn" onclick="clearCache()">🗑️ Clear Cache</button>
 
     <!-- Row 1: Header -->
     <div class="p-2">
@@ -96,7 +88,7 @@
         </h3>
         
         <!-- L2 Redirect Button -->
-        <div class="position-absolute d-flex align-items-center bottom-0 left-0 m-4">
+        <div class="position-absolute d-flex align-items-center top-0 left-0 m-4">
             <div class="l2-redirect-box">L2</div>
             <span class="ml-2">Redirect</span>
         </div>
