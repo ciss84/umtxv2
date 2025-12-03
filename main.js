@@ -884,68 +884,8 @@ async function main(userlandRW, wkOnly = false) {
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
             await new Promise(resolve => setTimeout(resolve, 8000));
-            
-            // Load etaHEN from /data/ or host and send to port 9021
-            try {
-                const etahen_filepath = "/data/etaHEN.bin";
-                p.writestr(elf_store, etahen_filepath);
-                
-                const O_RDONLY = 0x0000;
-                let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
-                let total_sz = 0;
-                
-                if (fd >= 0) {
-                    // Load from /data/
-                    await log("Loading etaHEN from /data/...", LogLevel.INFO);
-                    try {
-                        const stat_buf = p.malloc(0x200, 1);
-                        let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
-                        if (stat_res < 0) {
-                            throw new Error(`Failed to stat ${etahen_filepath}`);
-                        }
-                        
-                        const file_size = p.read8(stat_buf.add32(0x48)).low;
-                        await log(`File size: ${(file_size / 1024 / 1024).toFixed(2)} MB`, LogLevel.INFO);
-
-                        if (file_size > elf_store_size) {
-                            throw new Error(`File too large: ${file_size} bytes`);
-                        }
-
-                        let total_read = 0;
-                        let read_ptr = elf_store.add32(0);
-                        
-                        while (total_read < file_size) {
-                            let to_read = Math.min(0x100000, file_size - total_read);
-                            let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
-                            
-                            if (bytes_read <= 0) {
-                                throw new Error(`Read failed at offset ${total_read}`);
-                            }
-                            
-                            total_read += bytes_read;
-                            read_ptr.add32inplace(bytes_read);
-                        }
-                        
-                        total_sz = total_read;
-                        await log(`Loaded ${(total_sz / 1024 / 1024).toFixed(2)} MB from /data/`, LogLevel.SUCCESS);
-                    } finally {
-                        await chain.syscall(SYS_CLOSE, fd);
-                    }
-                } else {
-                    // Not in /data/, load from host
-                    await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
-                    total_sz = await load_payload_into_elf_store_from_local_file("etaHEN.bin");
-                }
-                
-                // Send to port 9021 (elfldr)
-                await log("Sending etaHEN to port 9021...", LogLevel.INFO);
-                await send_buffer_to_port(elf_store, total_sz, 9021);
-                await log(`EtaHEN Successfully Loaded via elfldr`, LogLevel.SUCCESS);
-                
-            } catch (error) {
-                await log(`Failed to load etaHEN: ${error}`, LogLevel.ERROR);
-            }
-            
+            await load_local_elf("etaHEN.bin");
+            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
             is_elfldr_running = true;
         } else {
@@ -1208,7 +1148,7 @@ async function main(userlandRW, wkOnly = false) {
      */
     async function download_etahen_to_data(log = () => { }) {
         const etahen_url = "etaHEN.bin"; // Load from same host (GitHub Pages)
-        const etahen_path = "/data/etaHEN.bin";
+        const etahen_path = "/data//etaHEN.bin";
         
         try {
             await log("Downloading etaHEN.bin from host...");
@@ -1221,8 +1161,8 @@ async function main(userlandRW, wkOnly = false) {
             const byteArray = new Uint8Array(data);
             await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`);
             
-            // Write to /data/etaHEN.bin
-            await log("Installing to /data/etaHEN.bin...");
+            // Write to /data//etaHEN.bin
+            await log("Installing to /data//etaHEN.bin...");
             p.writestr(elf_store, etahen_path);
             
             const O_WRONLY = 0x0001;
@@ -1231,7 +1171,7 @@ async function main(userlandRW, wkOnly = false) {
             let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
             
             if (fd < 0) {
-                throw new Error("Failed to create /data/etaHEN.bin (permission denied?)");
+                throw new Error("Failed to create /data//etaHEN.bin (permission denied?)");
             }
             
             try {
