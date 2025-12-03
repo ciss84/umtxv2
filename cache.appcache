@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 8.0 
+#VERSION 7.3 
 
 CACHE: 
 4.00.js
@@ -17,6 +17,7 @@ clean_cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
+etaHEN.bin
 index.html
 int64.js
 main.css
@@ -34,9 +35,4 @@ utils.js
 websrv.elf
 
 NETWORK: 
-
 * 
-
-
-
-
