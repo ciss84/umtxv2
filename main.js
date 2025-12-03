@@ -827,7 +827,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
-            await new Promise(resolve => setTimeout(resolve, 8000));
+            await new Promise(resolve => setTimeout(resolve, 9000));
             await load_local_elf("etaHEN.bin");
             await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
