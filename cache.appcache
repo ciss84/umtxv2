@@ -29,7 +29,6 @@ psfree.js
 rop.js
 rop_slave.js
 syscalls.js
-umtx2.js
 utils.js
 websrv.elf
 stability-enhancements.js
