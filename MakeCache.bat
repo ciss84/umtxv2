@@ -1,7 +1,7 @@
 @echo off
 
 echo CACHE MANIFEST > test0.txt
-echo #VERSION 1.1 >> test0.txt
+echo #VERSION 9.0 >> test0.txt
 echo. >> test0.txt
 echo CACHE: >> test0.txt
 
