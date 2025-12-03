@@ -1,7 +1,7 @@
 @echo off
 
 echo CACHE MANIFEST > test0.txt
-echo #VERSION 10.0 >> test0.txt
+echo #VERSION 1.1 >> test0.txt
 echo. >> test0.txt
 echo CACHE: >> test0.txt
 
@@ -33,9 +33,9 @@ set "firstLineReady="
 if defined firstLineReady (echo()
 set "firstLineReady=1"
 <nul set /p "=%%a")
-) > cache.appcache
+) > 84ciss.manifest
 del test.txt
 
-echo cache.appcache created!!
+echo 84ciss.manifest created!!
 
 sleep 2
