@@ -509,7 +509,7 @@ async function main(userlandRW, wkOnly = false) {
 
     let SIZE_ELF_HEADER = 0x40;
     let SIZE_ELF_PROGRAM_HEADER = 0x38;
-    var elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x2000000; // 32MB (augmenté pour etaHEN 2.4b)
+    var elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x1000000; // 16MB
     var elf_store = p.malloc(elf_store_size, 1);
 
     if (!wkOnly) {
@@ -815,7 +815,56 @@ async function main(userlandRW, wkOnly = false) {
 
         var load_local_elf = async function (filename) {
             try {
-                let total_sz = await load_payload_into_elf_store_from_local_file(filename);
+                let total_sz;
+                // Load etaHEN.bin from /data/ to avoid cache issues with large files
+                if (filename === "etaHEN.bin") {
+                    const filepath = `/data/${filename}`;
+                    p.writestr(elf_store, filepath);
+                    
+                    const O_RDONLY = 0x0000;
+                    let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
+                    if (fd < 0) {
+                        throw new Error(`Failed to open ${filepath}. Make sure etaHEN.bin is in /data/`);
+                    }
+
+                    try {
+                        const stat_buf = p.malloc(0x200, 1);
+                        let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
+                        if (stat_res < 0) {
+                            throw new Error(`Failed to stat ${filepath}`);
+                        }
+                        
+                        const file_size = p.read8(stat_buf.add32(0x48)).low;
+                        await log(`Loading etaHEN from /data/ (${(file_size / 1024 / 1024).toFixed(2)} MB)...`, LogLevel.INFO);
+
+                        if (file_size > elf_store_size) {
+                            throw new Error(`etaHEN.bin too large: ${file_size} bytes (max: ${elf_store_size})`);
+                        }
+
+                        let total_read = 0;
+                        let read_ptr = elf_store.add32(0);
+                        
+                        while (total_read < file_size) {
+                            let to_read = Math.min(0x100000, file_size - total_read);
+                            let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
+                            
+                            if (bytes_read <= 0) {
+                                throw new Error(`Read failed at offset ${total_read}`);
+                            }
+                            
+                            total_read += bytes_read;
+                            read_ptr.add32inplace(bytes_read);
+                        }
+                        
+                        total_sz = total_read;
+                    } finally {
+                        await chain.syscall(SYS_CLOSE, fd);
+                    }
+                } else {
+                    // Load other files normally from host
+                    total_sz = await load_payload_into_elf_store_from_local_file(filename);
+                }
+                
                 await parse_elf_store(total_sz);
                 await execute_elf_store();
                 return await wait_for_elf_to_exit();
