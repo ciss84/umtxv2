@@ -33,16 +33,6 @@ const payload_map = [
     // etaHEN is added twice so that on 1.xx-2.xx you can load it in webkit only mode too
     // but on 3.xx-4.xx it only shows in kernel exploit mode since it needs the 9020 elf loader for kstuff
     {
-        displayTitle: "?? Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for faster loading, no cache issues)",
-        fileName: "",
-        author: "84Ciss",
-        projectSource: "https://github.com/ciss84/umtxv2",
-        binarySource: "",
-        version: "2.4b",
-        customAction: "ETAHEN_INSTALL"
-    },
-    {
         // https://github.com/Storm21CH/PS5_Browser_appCache_remove
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
@@ -54,6 +44,16 @@ const payload_map = [
         customAction: CUSTOM_ACTION_APPCACHE_REMOVE
     },
     {
+        displayTitle: "Install etaHEN to /data/",
+        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for faster loading, no cache issues)",
+        fileName: "",
+        author: "LM LightningMods",
+        projectSource: "https://github.com/ciss84/umtxv2",
+        binarySource: "",
+        version: "2.4b",
+        customAction: "ETAHEN_INSTALL"
+    },    
+    {
         displayTitle: "websrv",
         description: "Custom homebrew loader. Runs on port 8080.",
         fileName: "websrv.elf",
@@ -62,6 +62,6 @@ const payload_map = [
         binarySource: "https://github.com/ps5-payload-dev/websrv/releases/download/v0.22/Payload.zip",
         version: "0.22",
         toPort: 9021
-    }    
-
+    }
 ];
+
