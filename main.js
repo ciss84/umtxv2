@@ -491,8 +491,8 @@ async function main(userlandRW, wkOnly = false) {
 
         // Patch PS4 SDK version
         if (typeof OFFSET_KERNEL_PS4SDK != 'undefined') {
-            await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
-            await log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
+            //await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
+            //await log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
         }
 
         ///////////////////////////////////////////////////////////////////////
