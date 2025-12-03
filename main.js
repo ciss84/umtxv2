@@ -817,48 +817,55 @@ async function main(userlandRW, wkOnly = false) {
             try {
                 let total_sz;
                 
-                // Load etaHEN.bin from /data/
+                // For etaHEN.bin: try /data/ first, then fallback to host
                 if (filename === "etaHEN.bin") {
                     const filepath = `/data/${filename}`;
                     p.writestr(elf_store, filepath);
                     
                     const O_RDONLY = 0x0000;
                     let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
-                    if (fd < 0) {
-                        throw new Error(`Failed to open ${filepath}`);
-                    }
-
-                    try {
-                        const stat_buf = p.malloc(0x200, 1);
-                        let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
-                        if (stat_res < 0) {
-                            throw new Error(`Failed to stat ${filepath}`);
-                        }
-                        
-                        const file_size = p.read8(stat_buf.add32(0x48)).low;
-
-                        if (file_size > elf_store_size) {
-                            throw new Error(`File too large: ${file_size} bytes`);
-                        }
-
-                        let total_read = 0;
-                        let read_ptr = elf_store.add32(0);
-                        
-                        while (total_read < file_size) {
-                            let to_read = Math.min(0x100000, file_size - total_read);
-                            let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
-                            
-                            if (bytes_read <= 0) {
-                                throw new Error(`Read failed at offset ${total_read}`);
+                    
+                    if (fd >= 0) {
+                        // Load from /data/
+                        await log("Loading etaHEN from /data/...", LogLevel.INFO);
+                        try {
+                            const stat_buf = p.malloc(0x200, 1);
+                            let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
+                            if (stat_res < 0) {
+                                throw new Error(`Failed to stat ${filepath}`);
                             }
                             
-                            total_read += bytes_read;
-                            read_ptr.add32inplace(bytes_read);
+                            const file_size = p.read8(stat_buf.add32(0x48)).low;
+                            await log(`File size: ${(file_size / 1024 / 1024).toFixed(2)} MB`, LogLevel.INFO);
+
+                            if (file_size > elf_store_size) {
+                                throw new Error(`File too large: ${file_size} bytes`);
+                            }
+
+                            let total_read = 0;
+                            let read_ptr = elf_store.add32(0);
+                            
+                            while (total_read < file_size) {
+                                let to_read = Math.min(0x100000, file_size - total_read);
+                                let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
+                                
+                                if (bytes_read <= 0) {
+                                    throw new Error(`Read failed at offset ${total_read}`);
+                                }
+                                
+                                total_read += bytes_read;
+                                read_ptr.add32inplace(bytes_read);
+                            }
+                            
+                            total_sz = total_read;
+                            await log(`Loaded ${(total_sz / 1024 / 1024).toFixed(2)} MB from /data/`, LogLevel.SUCCESS);
+                        } finally {
+                            await chain.syscall(SYS_CLOSE, fd);
                         }
-                        
-                        total_sz = total_read;
-                    } finally {
-                        await chain.syscall(SYS_CLOSE, fd);
+                    } else {
+                        // Not in /data/, load from host
+                        await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
+                        total_sz = await load_payload_into_elf_store_from_local_file(filename);
                     }
                 } else {
                     // Load other files normally from host
@@ -874,126 +881,9 @@ async function main(userlandRW, wkOnly = false) {
             }
         }
 
-        // Auto-download/update etaHEN from GitHub
-        var ensure_etahen_in_data = async function () {
-            const etahen_path = "/data/etaHEN.bin";
-            const github_url = "https://github.com/ciss84/umtxv2/raw/main/etaHEN.bin";
-            
-            p.writestr(elf_store, etahen_path);
-            
-            // Check if etaHEN.bin exists in /data/
-            const O_RDONLY = 0x0000;
-            let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
-            
-            let needs_download = false;
-            let existing_size = 0;
-            
-            if (fd < 0) {
-                await log("etaHEN.bin not found in /data/, downloading...", LogLevel.INFO);
-                needs_download = true;
-            } else {
-                // Get existing file size
-                const stat_buf = p.malloc(0x200, 1);
-                await chain.syscall(SYS_FSTAT, fd, stat_buf);
-                existing_size = p.read8(stat_buf.add32(0x48)).low;
-                await chain.syscall(SYS_CLOSE, fd);
-                
-                await log(`Found etaHEN.bin in /data/ (${(existing_size / 1024 / 1024).toFixed(2)} MB)`, LogLevel.INFO);
-                
-                // Check GitHub version size
-                try {
-                    await log("Checking for updates...", LogLevel.INFO);
-                    const head_response = await fetch(github_url, { method: 'HEAD' });
-                    if (head_response.ok) {
-                        const github_size = parseInt(head_response.headers.get('content-length') || '0');
-                        if (github_size > 0 && github_size !== existing_size) {
-                            await log(`New version available (${(github_size / 1024 / 1024).toFixed(2)} MB), updating...`, LogLevel.INFO);
-                            needs_download = true;
-                        } else {
-                            await log("etaHEN is up to date!", LogLevel.SUCCESS);
-                        }
-                    }
-                } catch (e) {
-                    await log("Could not check for updates, using local version", LogLevel.WARN);
-                }
-            }
-            
-            if (needs_download) {
-                try {
-                    // Download from GitHub
-                    await log(`Downloading etaHEN from GitHub...`, LogLevel.INFO);
-                    const response = await fetch(github_url);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    
-                    const data = await response.arrayBuffer();
-                    const byteArray = new Uint8Array(data);
-                    await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`, LogLevel.SUCCESS);
-                    
-                    // Write to /data/etaHEN.bin
-                    await log("Installing to /data/etaHEN.bin...", LogLevel.INFO);
-                    p.writestr(elf_store, etahen_path);
-                    
-                    const O_WRONLY = 0x0001;
-                    const O_CREAT = 0x0200;
-                    const O_TRUNC = 0x0400;
-                    fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
-                    
-                    if (fd < 0) {
-                        throw new Error("Failed to create /data/etaHEN.bin");
-                    }
-                    
-                    try {
-                        // Copy data to elf_store first
-                        if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
-                            elf_store.backing.set(byteArray);
-                        } else {
-                            throw new Error("Unsupported backing array type for download");
-                        }
-                        
-                        // Write to file
-                        let total_written = 0;
-                        let write_ptr = elf_store.add32(0);
-                        
-                        while (total_written < byteArray.byteLength) {
-                            let to_write = Math.min(0x100000, byteArray.byteLength - total_written);
-                            let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
-                            
-                            if (bytes_written <= 0) {
-                                throw new Error(`Write failed at offset ${total_written}`);
-                            }
-                            
-                            total_written += bytes_written;
-                            write_ptr.add32inplace(bytes_written);
-                            
-                            await log(`Installing: ${((total_written / byteArray.byteLength) * 100).toFixed(1)}%`, LogLevel.INFO | LogLevel.FLAG_TEMP);
-                        }
-                        
-                        await log(`etaHEN successfully installed to /data/!`, LogLevel.SUCCESS);
-                        
-                    } finally {
-                        await chain.syscall(SYS_CLOSE, fd);
-                    }
-                    
-                } catch (error) {
-                    await log(`Failed to download/install etaHEN: ${error}`, LogLevel.ERROR);
-                    if (existing_size > 0) {
-                        await log("Will use existing local version", LogLevel.WARN);
-                    } else {
-                        throw new Error("No etaHEN.bin available");
-                    }
-                }
-            }
-        }
-
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
             await new Promise(resolve => setTimeout(resolve, 8000));
-            
-            // Ensure etaHEN is in /data/ (download if needed)
-            await ensure_etahen_in_data();
-            
             await load_local_elf("etaHEN.bin");
             await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
@@ -1253,6 +1143,76 @@ async function main(userlandRW, wkOnly = false) {
     }
     send_buffer_to_port.sock_addr_store = p.malloc(0x10, 1);
 
+    /**
+     * @param {function(string): void} [log]
+     */
+    async function download_etahen_to_data(log = () => { }) {
+        const etahen_url = "etaHEN.bin"; // Load from same host (GitHub Pages)
+        const etahen_path = "/data/etaHEN.bin";
+        
+        try {
+            await log("Downloading etaHEN.bin from host...");
+            const response = await fetch(etahen_url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.arrayBuffer();
+            const byteArray = new Uint8Array(data);
+            await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`);
+            
+            // Write to /data/etaHEN.bin
+            await log("Installing to /data/etaHEN.bin...");
+            p.writestr(elf_store, etahen_path);
+            
+            const O_WRONLY = 0x0001;
+            const O_CREAT = 0x0200;
+            const O_TRUNC = 0x0400;
+            let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
+            
+            if (fd < 0) {
+                throw new Error("Failed to create /data/etaHEN.bin (permission denied?)");
+            }
+            
+            try {
+                // Copy data to elf_store first
+                if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
+                    elf_store.backing.set(byteArray);
+                } else {
+                    throw new Error("Unsupported backing array type");
+                }
+                
+                // Write to file in chunks
+                let total_written = 0;
+                let write_ptr = elf_store.add32(0);
+                
+                while (total_written < byteArray.byteLength) {
+                    let to_write = Math.min(0x100000, byteArray.byteLength - total_written);
+                    let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
+                    
+                    if (bytes_written <= 0) {
+                        throw new Error(`Write failed at offset ${total_written}`);
+                    }
+                    
+                    total_written += bytes_written;
+                    write_ptr.add32inplace(bytes_written);
+                    
+                    await log(`Installing: ${((total_written / byteArray.byteLength) * 100).toFixed(1)}%`);
+                }
+                
+                await log(`etaHEN successfully installed to /data/! (${(total_written / 1024 / 1024).toFixed(2)} MB)`);
+                await log("You can now run etaHEN from /data/ (faster, no cache issues!)");
+                
+            } finally {
+                await chain.syscall(SYS_CLOSE, fd);
+            }
+            
+        } catch (error) {
+            await log(`Failed to download/install etaHEN: ${error}`);
+            throw error;
+        }
+    }
+
     sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
 
     let ports = wkOnly ? "" : "9020";
@@ -1291,6 +1251,8 @@ async function main(userlandRW, wkOnly = false) {
                 if (payload_info.customAction) {
                     if (payload_info.customAction === CUSTOM_ACTION_APPCACHE_REMOVE) {
                         await delete_appcache(updateToastMessage.bind(null, toast));
+                    } else if (payload_info.customAction === "ETAHEN_INSTALL") {
+                        await download_etahen_to_data(updateToastMessage.bind(null, toast));
                     } else {
                         throw new Error(`Unknown custom action: ${payload_info.customAction}`);
                     }
