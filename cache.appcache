@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 1.1 
+#VERSION 7.0 
 
 CACHE: 
 4.00.js
@@ -18,10 +18,10 @@ config.js
 custom_host_stuff.js
 elfldr.elf
 etaHEN.bin
+exploit.js
 index.html
 int64.js
 main.css
-main.js
 offset.js
 payload_map.js
 psfree.js
