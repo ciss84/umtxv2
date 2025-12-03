@@ -937,9 +937,37 @@ async function main(userlandRW, wkOnly = false) {
                     total_sz = await load_payload_into_elf_store_from_local_file("etaHEN.bin");
                 }
                 
-                // Send to port 9021 (elfldr)
+                // Send to port 9021 (elfldr) - inline code to avoid hoisting issues
                 await log("Sending etaHEN to port 9021...", LogLevel.INFO);
-                await send_buffer_to_port(elf_store, total_sz, 9021);
+                
+                let sock = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
+                if (sock <= 0) {
+                    throw new Error("Failed to create socket for port 9021");
+                }
+
+                const sock_addr = p.malloc(0x10, 1);
+                build_addr(p, sock_addr, AF_INET, htons(9021), 0x0100007F);
+
+                let connect_res = (await chain.syscall(SYS_CONNECT, sock, sock_addr, 0x10)).low << 0;
+                if (connect_res < 0) {
+                    await chain.syscall(SYS_CLOSE, sock);
+                    throw new Error("Failed to connect to port 9021 (is elfldr running?)");
+                }
+
+                let bytes_sent = 0;
+                let write_ptr = elf_store.add32(0x0);
+                while (bytes_sent < total_sz) {
+                    let send_res = (await chain.syscall(SYS_WRITE, sock, write_ptr, total_sz - bytes_sent)).low << 0;
+                    if (send_res <= 0) {
+                        await chain.syscall(SYS_CLOSE, sock);
+                        throw new Error("Failed to send etaHEN to port 9021");
+                    }
+
+                    bytes_sent += send_res;
+                    write_ptr.add32inplace(send_res);
+                }
+
+                await chain.syscall(SYS_CLOSE, sock);
                 await log(`EtaHEN Successfully Loaded via elfldr`, LogLevel.SUCCESS);
                 
             } catch (error) {
