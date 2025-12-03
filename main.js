@@ -1148,7 +1148,7 @@ async function main(userlandRW, wkOnly = false) {
      */
     async function download_etahen_to_data(log = () => { }) {
         const etahen_url = "etaHEN.bin"; // Load from same host (GitHub Pages)
-        const etahen_path = "/data/etaHEN/etaHEN.bin";
+        const etahen_path = "/data//etaHEN.bin";
         
         try {
             await log("Downloading etaHEN.bin from host...");
@@ -1161,8 +1161,8 @@ async function main(userlandRW, wkOnly = false) {
             const byteArray = new Uint8Array(data);
             await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`);
             
-            // Write to /data/etaHEN/etaHEN.bin
-            await log("Installing to /data/etaHEN/etaHEN.bin...");
+            // Write to /data//etaHEN.bin
+            await log("Installing to /data//etaHEN.bin...");
             p.writestr(elf_store, etahen_path);
             
             const O_WRONLY = 0x0001;
@@ -1171,7 +1171,7 @@ async function main(userlandRW, wkOnly = false) {
             let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
             
             if (fd < 0) {
-                throw new Error("Failed to create /data/etaHEN/etaHEN.bin (permission denied?)");
+                throw new Error("Failed to create /data//etaHEN.bin (permission denied?)");
             }
             
             try {
