@@ -509,7 +509,7 @@ async function main(userlandRW, wkOnly = false) {
 
     let SIZE_ELF_HEADER = 0x40;
     let SIZE_ELF_PROGRAM_HEADER = 0x38;
-    var elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x1000000; // 16MB
+    var elf_store_size = SIZE_ELF_HEADER + (SIZE_ELF_PROGRAM_HEADER * 0x10) + 0x2000000; // 32MB (augmenté pour etaHEN 2.4b)
     var elf_store = p.malloc(elf_store_size, 1);
 
     if (!wkOnly) {
@@ -827,7 +827,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
-            await new Promise(resolve => setTimeout(resolve, 9000));
+            await new Promise(resolve => setTimeout(resolve, 8000));
             await load_local_elf("etaHEN.bin");
             await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
