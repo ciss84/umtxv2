@@ -33,9 +33,9 @@ set "firstLineReady="
 if defined firstLineReady (echo()
 set "firstLineReady=1"
 <nul set /p "=%%a")
-) > 84ciss.manifest
+) > cache.appcache
 del test.txt
 
-echo 84ciss.manifest created!!
+echo cache.appcache created!!
 
 sleep 2

@@ -1493,7 +1493,7 @@ async function runUmtx2Exploit(p, chain, log = async () => { }) {
 }-e 
 
 //============================================================================
-// MAIN.JS CONTENT BELOW
+// MAIN.JS CONTENT
 //============================================================================
 
 if (!navigator.userAgent.includes('PlayStation 5')) {
