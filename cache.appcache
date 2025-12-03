@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 5.9
+#VERSION 1.1 
 
 CACHE: 
 4.00.js
@@ -11,10 +11,9 @@ CACHE:
 5.02.js
 5.10.js
 5.50.js
-README.md
-Style.css
 alert.js
 cache.html
+clean_cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
@@ -28,11 +27,12 @@ payload_map.js
 psfree.js
 rop.js
 rop_slave.js
+stability-enhancements.js
+Style.css
 syscalls.js
 umtx2.js
 utils.js
 websrv.elf
-stability-enhancements.js
 
 NETWORK: 
 * 

