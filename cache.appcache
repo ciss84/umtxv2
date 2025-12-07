@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 8.6 
+#VERSION 8.7 
 
 CACHE: 
 4.00.js
@@ -36,6 +36,7 @@ websrv.elf
 NETWORK: 
 
 * 
+
 
 
 
