@@ -50,7 +50,7 @@ const payload_map = [
         author: "LM LightningMods",
         projectSource: "https://github.com/ciss84/umtxv2",
         binarySource: "",
-        version: "2.4b",
+        version: "2.5b",
         customAction: "ETAHEN_INSTALL"
     },    
     {
@@ -64,5 +64,6 @@ const payload_map = [
         toPort: 9021
     }
 ];
+
 
 
