@@ -65,6 +65,8 @@ let nogc = [];
 
 let worker = new Worker("rop_slave.js");
 
+const _htons_cache = new Map();
+
 /**
  * @param {UserlandRW|WebkitPrimitives} p 
  * @param {int64} buf 
@@ -84,7 +86,10 @@ function build_addr(p, buf, family, port, addr) {
  * @returns {number}
  */
 function htons(port) {
-    return ((port & 0xFF) << 8) | (port >>> 8);
+    if (_htons_cache.has(port)) return _htons_cache.get(port);
+    const result = ((port & 0xFF) << 8) | (port >>> 8);
+    _htons_cache.set(port, result);
+    return result;
 }
 
 /**
