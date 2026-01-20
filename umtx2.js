@@ -1,10 +1,4 @@
 // @ts-check
-// OPTIMIZED VERSION - Enhanced performance and stability
-// Key optimizations:
-// - Faster bit operations using Math.log2
-// - Optimized memory allocations
-// - Better thread coordination
-// - Reduced syscall overhead
 
 /** 
  * @typedef {Object} KernelRW
@@ -73,7 +67,6 @@ async function runUmtx2Exploit(p, chain, log = async () => { }) {
         return str;
     }
 
-    // OPTIMIZED: Tuned values for better stability and speed
     const config = {
         max_attempts: 100,
         max_race_attempts: 0x400,
@@ -117,14 +110,18 @@ async function runUmtx2Exploit(p, chain, log = async () => { }) {
     }
 
     /**
-     * OPTIMIZED: Faster bit position calculation
+     * 
      * @param {int64} mask_addr 
      * @returns {number}
      */
     function getCoreIndex(mask_addr) {
         let num = p.read4(mask_addr);
-        // Fast bit scan using Math.log2
-        return num === 0 ? -1 : Math.floor(Math.log2(num));
+        let position = 0;
+        while (num > 0) {
+            num = num >>> 1;
+            position = position + 1;
+        }
+        return position - 1;
     }
 
     const minusOneInt32 = 0xFFFFFFFF;
