@@ -48,11 +48,21 @@ const payload_map = [
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
         fileName: "",
         author: "LM LightningMods",
-        projectSource: "https://github.com/ciss84/umtxv2",
+        projectSource: "https://github.com/ciss84/umtxv2/25b",
         binarySource: "",
         version: "2.5b",
         customAction: "ETAHEN_INSTALL"
-    },    
+    },   
+    {
+        displayTitle: "Install etaHEN to /data/",
+        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        fileName: "",
+        author: "LM LightningMods",
+        projectSource: "https://github.com/ciss84/umtxv2/24b",
+        binarySource: "",
+        version: "2.4b",
+        customAction: "ETAHEN_INSTALL"
+    },      
     {
         displayTitle: "websrv",
         description: "Custom homebrew loader. Runs on port 8080.",
