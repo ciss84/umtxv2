@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 9.07 
+#VERSION 9.08  
 
 CACHE: 
 4.00.js
@@ -17,12 +17,14 @@ clean_cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
+etaHEN.bin
 index.html
 int64.js
 main.css
 main.js
 offset.js
 payload_map.js
+backpork.elf
 psfree.js
 rop.js
 rop_slave.js
@@ -33,15 +35,4 @@ utils.js
 websrv.elf
 
 NETWORK: 
-
 * 
-
-
-
-
-
-
-
-
-
-
