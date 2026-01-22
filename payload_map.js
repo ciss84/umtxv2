@@ -32,6 +32,7 @@ const payload_map = [
     // },
     // etaHEN is added twice so that on 1.xx-2.xx you can load it in webkit only mode too
     // but on 3.xx-4.xx it only shows in kernel exploit mode since it needs the 9020 elf loader for kstuff
+
     {
         displayTitle: "Install etaHEN to /data/",
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
@@ -41,7 +42,7 @@ const payload_map = [
         binarySource: "",
         version: "2.5b",
         customAction: "ETAHEN_INSTALL"
-    },   
+    },
     {
         displayTitle: "Install etaHEN to /data/",
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
@@ -53,6 +54,26 @@ const payload_map = [
         customAction: "ETAHEN_INSTALL"
     },
     {
+        displayTitle: "websrv",
+        description: "Custom homebrew loader. Runs on port 8080.",
+        fileName: "websrv.elf",
+        author: "john-tornblom",
+        projectSource: "https://github.com/ps5-payload-dev/websrv",
+        binarySource: "https://github.com/ps5-payload-dev/websrv/releases/download/v0.22/Payload.zip",
+        version: "0.22",
+        toPort: 9021
+    }, 
+    {
+        displayTitle: "backpork",
+        description: "Custom backpork loader",
+        fileName: "ps5Game-backpork.elf",
+        author: "",
+        projectSource: "",
+        binarySource: "",
+        version: "1.00",
+        toPort: 9021        
+    },
+    {
         // https://github.com/Storm21CH/PS5_Browser_appCache_remove
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
@@ -62,18 +83,9 @@ const payload_map = [
         binarySource: "",
         version: "1.0",
         customAction: CUSTOM_ACTION_APPCACHE_REMOVE
-    },       
-    {
-        displayTitle: "websrv",
-        description: "Custom homebrew loader. Runs on port 8080.",
-        fileName: "websrv.elf",
-        author: "john-tornblom",
-        projectSource: "https://github.com/ps5-payload-dev/websrv",
-        binarySource: "https://github.com/ps5-payload-dev/websrv/releases/download/v0.22/Payload.zip",
-        version: "0.22",
-        toPort: 9021
-    }
+    }   
 ];
+
 
 
 
