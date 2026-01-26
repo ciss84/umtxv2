@@ -37,6 +37,16 @@ const payload_map = [
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
         fileName: "",
         author: "LM LightningMods",
+        projectSource: "https://github.com/ciss84/umtxv2/26b",
+        binarySource: "",
+        version: "2.6b",
+        customAction: "ETAHEN_INSTALL"
+    },  
+    {
+        displayTitle: "Install etaHEN to /data/",
+        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        fileName: "",
+        author: "LM LightningMods",
         projectSource: "https://github.com/ciss84/umtxv2/25b",
         binarySource: "",
         version: "2.5b",
@@ -84,6 +94,7 @@ const payload_map = [
         toPort: 9021
     }
 ];
+
 
 
 
