@@ -82,18 +82,9 @@ const payload_map = [
         binarySource: "",
         version: "1.00",
         toPort: 9021
-    },          
-    {
-        displayTitle: "websrv",
-        description: "Custom homebrew loader. Runs on port 8080.",
-        fileName: "websrv.elf",
-        author: "john-tornblom",
-        projectSource: "https://github.com/ps5-payload-dev/websrv",
-        binarySource: "https://github.com/ps5-payload-dev/websrv/releases/download/v0.22/Payload.zip",
-        version: "0.22",
-        toPort: 9021
     }
 ];
+
 
 
 
