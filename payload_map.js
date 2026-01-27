@@ -72,18 +72,9 @@ const payload_map = [
         binarySource: "",
         version: "1.0",
         customAction: CUSTOM_ACTION_APPCACHE_REMOVE
-    },
-    {
-        displayTitle: "BackPort 1.00",
-        description: "Custom ps5 Game-backpork loader",
-        fileName: "backpork.elf",
-        author: "",
-        projectSource: "",
-        binarySource: "",
-        version: "1.00",
-        toPort: 9021
     }
 ];
+
 
 
 
