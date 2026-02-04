@@ -1239,12 +1239,12 @@ async function main(userlandRW, wkOnly = false) {
     /**
      * @param {function(string): void} [log]
      */
-    async function download_etahen_to_data(log = () => { }) {
-        const etahen_url = "etaHEN.bin"; // Load from same host (GitHub Pages)
+    async function download_etahen_to_data(log = () => { }, versionPath = "") {
+        const etahen_url = versionPath ? versionPath + "/etaHEN.bin" : "etaHEN.bin"; // Load from version folder or root
         const etahen_path = "/data/etaHEN.bin";
         
         try {
-            await log("Downloading etaHEN.bin from host...");
+            await log(`Downloading etaHEN.bin from ${versionPath || 'root'}...`);
             const response = await fetch(etahen_url);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -1345,7 +1345,10 @@ async function main(userlandRW, wkOnly = false) {
                     if (payload_info.customAction === CUSTOM_ACTION_APPCACHE_REMOVE) {
                         await delete_appcache(updateToastMessage.bind(null, toast));
                     } else if (payload_info.customAction === "ETAHEN_INSTALL") {
-                        await download_etahen_to_data(updateToastMessage.bind(null, toast));
+                        // Extract version folder from projectSource (e.g., "https://github.com/ciss84/umtxv2/26b" -> "26b")
+                        const versionMatch = payload_info.projectSource.match(/\/(\d+b)$/);
+                        const versionPath = versionMatch ? versionMatch[1] : "";
+                        await download_etahen_to_data(updateToastMessage.bind(null, toast), versionPath);
                     } else {
                         throw new Error(`Unknown custom action: ${payload_info.customAction}`);
                     }
