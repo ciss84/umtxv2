@@ -13,7 +13,7 @@ const payload_map = [
     },  
     {
         displayTitle: "Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        description: "Download etaHEN.bin and install to /data/",
         fileName: "",
         author: "LM LightningMods",
         projectSource: "https://github.com/ciss84/umtxv2/25b",
@@ -23,7 +23,7 @@ const payload_map = [
     },   
     {
         displayTitle: "Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        description: "Download etaHEN.bin and install to /data/",
         fileName: "",
         author: "LM LightningMods",
         projectSource: "https://github.com/ciss84/umtxv2/24b",
@@ -31,6 +31,26 @@ const payload_map = [
         version: "2.4b",
         customAction: "ETAHEN_INSTALL"
     },
+    {
+        displayTitle: "Install Kstuff Lite to /data/etaHEN/",
+        description: "Download kstuff.elf and install to /data/etaHEN/",
+        fileName: "",
+        author: "EchoStretch",
+        projectSource: "https://github.com/ciss84/umtxv2/kstuff-lite",
+        binarySource: "https://github.com/etaHEN",
+        version: "1.0",
+        customAction: "ETAHEN_INSTALL"
+    },    
+    {
+        displayTitle: "np-fake",
+        description: "np-fake-signin-ps5",
+        fileName: "np-fake-signin-ps5.elf",
+        author: "https://github.com/earthonion",
+        projectSource: "https://github.com/earthonion/np-fake-signin",
+        binarySource: "https://github.com/earthonion/np-fake-signin/releases/download/1.1/np-fake-signin-ps5.elf",
+        version: "1.1",
+        toPort: 9021
+    },   
     {
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
