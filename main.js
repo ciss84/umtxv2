@@ -1307,25 +1307,25 @@ async function main(userlandRW, wkOnly = false) {
     }
 
     /**
-     * Download and install kstuff.elf to /data/etaHEN/ with streaming (low memory usage)
+     * Install kstuff.elf from local file to /data/etaHEN/
      * @param {function(string): void} [log]
      */
-    async function download_kstuff_to_data(log = () => { }) {
-        const kstuff_url = "kstuff-lite/kstuff.elf";
+    async function install_kstuff_to_data(log = () => { }) {
         const kstuff_path = "/data/etaHEN/kstuff.elf";
-        const CHUNK_SIZE = 0x80000; // 512KB chunks to save memory
         
         try {
-            await log(`Downloading kstuff.elf...`);
-            const response = await fetch(kstuff_url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
+            // Create /data/etaHEN/ directory if it doesn't exist
+            await log("Creating /data/etaHEN/ directory...");
+            p.writestr(elf_store, "/data/etaHEN");
+            const ret = (await chain.syscall(SYS_MKDIR, elf_store, 0x1FF)).low << 0;
+            // Ignore error if directory already exists (errno 17)
             
-            const contentLength = parseInt(response.headers.get('content-length') || '0');
-            await log(`File size: ${(contentLength / 1024 / 1024).toFixed(2)} MB`);
+            // Load kstuff.elf from local file into elf_store
+            await log("Loading kstuff.elf from local file...");
+            let total_sz = await load_payload_into_elf_store_from_local_file("kstuff-lite/kstuff.elf");
+            await log(`Loaded ${(total_sz / 1024 / 1024).toFixed(2)} MB`);
             
-            // Open file for writing
+            // Write to /data/etaHEN/kstuff.elf
             await log("Installing to /data/etaHEN/kstuff.elf...");
             p.writestr(elf_store, kstuff_path);
             
@@ -1339,39 +1339,22 @@ async function main(userlandRW, wkOnly = false) {
             }
             
             try {
-                const reader = response.body.getReader();
+                // Write in chunks
                 let total_written = 0;
                 let write_ptr = elf_store.add32(0);
                 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
+                while (total_written < total_sz) {
+                    let to_write = Math.min(0x100000, total_sz - total_written);
+                    let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
                     
-                    // Write this chunk
-                    const chunk = value;
-                    if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
-                        elf_store.backing.set(chunk, 0);
-                    } else {
-                        throw new Error("Unsupported backing array type");
+                    if (bytes_written <= 0) {
+                        throw new Error(`Write failed at offset ${total_written}`);
                     }
                     
-                    let chunk_written = 0;
-                    while (chunk_written < chunk.length) {
-                        let to_write = Math.min(CHUNK_SIZE, chunk.length - chunk_written);
-                        let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
-                        
-                        if (bytes_written <= 0) {
-                            throw new Error(`Write failed at offset ${total_written}`);
-                        }
-                        
-                        chunk_written += bytes_written;
-                        total_written += bytes_written;
-                        write_ptr.add32inplace(bytes_written);
-                        
-                        if (contentLength > 0) {
-                            await log(`Installing: ${((total_written / contentLength) * 100).toFixed(1)}%`);
-                        }
-                    }
+                    total_written += bytes_written;
+                    write_ptr.add32inplace(bytes_written);
+                    
+                    await log(`Installing: ${((total_written / total_sz) * 100).toFixed(1)}%`);
                 }
                 
                 await log(`Kstuff Lite installed! (${(total_written / 1024 / 1024).toFixed(2)} MB)`);
@@ -1434,7 +1417,7 @@ async function main(userlandRW, wkOnly = false) {
                     }
                 } else if (payload_info.customAction2) {
                     if (payload_info.customAction2 === "KSTUFF_INSTALL") {
-                        await download_kstuff_to_data(updateToastMessage.bind(null, toast));
+                        await install_kstuff_to_data(updateToastMessage.bind(null, toast));
                     } else {
                         throw new Error(`Unknown custom action 2: ${payload_info.customAction2}`);
                     }
