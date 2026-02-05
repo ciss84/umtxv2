@@ -1306,6 +1306,86 @@ async function main(userlandRW, wkOnly = false) {
         }
     }
 
+    /**
+     * Download and install kstuff.elf to /data/etaHEN/ with streaming (low memory usage)
+     * @param {function(string): void} [log]
+     */
+    async function download_kstuff_to_data(log = () => { }) {
+        const kstuff_url = "kstuff-lite/kstuff.elf";
+        const kstuff_path = "/data/etaHEN/kstuff.elf";
+        const CHUNK_SIZE = 0x80000; // 512KB chunks to save memory
+        
+        try {
+            await log(`Downloading kstuff.elf...`);
+            const response = await fetch(kstuff_url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const contentLength = parseInt(response.headers.get('content-length') || '0');
+            await log(`File size: ${(contentLength / 1024 / 1024).toFixed(2)} MB`);
+            
+            // Open file for writing
+            await log("Installing to /data/etaHEN/kstuff.elf...");
+            p.writestr(elf_store, kstuff_path);
+            
+            const O_WRONLY = 0x0001;
+            const O_CREAT = 0x0200;
+            const O_TRUNC = 0x0400;
+            let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
+            
+            if (fd < 0) {
+                throw new Error("Failed to create /data/etaHEN/kstuff.elf");
+            }
+            
+            try {
+                const reader = response.body.getReader();
+                let total_written = 0;
+                let write_ptr = elf_store.add32(0);
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    // Write this chunk
+                    const chunk = value;
+                    if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
+                        elf_store.backing.set(chunk, 0);
+                    } else {
+                        throw new Error("Unsupported backing array type");
+                    }
+                    
+                    let chunk_written = 0;
+                    while (chunk_written < chunk.length) {
+                        let to_write = Math.min(CHUNK_SIZE, chunk.length - chunk_written);
+                        let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
+                        
+                        if (bytes_written <= 0) {
+                            throw new Error(`Write failed at offset ${total_written}`);
+                        }
+                        
+                        chunk_written += bytes_written;
+                        total_written += bytes_written;
+                        write_ptr.add32inplace(bytes_written);
+                        
+                        if (contentLength > 0) {
+                            await log(`Installing: ${((total_written / contentLength) * 100).toFixed(1)}%`);
+                        }
+                    }
+                }
+                
+                await log(`Kstuff Lite installed! (${(total_written / 1024 / 1024).toFixed(2)} MB)`);
+                
+            } finally {
+                await chain.syscall(SYS_CLOSE, fd);
+            }
+            
+        } catch (error) {
+            await log(`Failed to install Kstuff: ${error}`);
+            throw error;
+        }
+    }
+
     sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
 
     let ports = wkOnly ? "" : "9020";
@@ -1351,6 +1431,12 @@ async function main(userlandRW, wkOnly = false) {
                         await download_etahen_to_data(updateToastMessage.bind(null, toast), versionPath);
                     } else {
                         throw new Error(`Unknown custom action: ${payload_info.customAction}`);
+                    }
+                } else if (payload_info.customAction2) {
+                    if (payload_info.customAction2 === "KSTUFF_INSTALL") {
+                        await download_kstuff_to_data(updateToastMessage.bind(null, toast));
+                    } else {
+                        throw new Error(`Unknown custom action 2: ${payload_info.customAction2}`);
                     }
                 } else {
                     updateToastMessage(toast, `${payload_info.displayTitle}: Fetching...`);
