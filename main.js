@@ -1306,77 +1306,6 @@ async function main(userlandRW, wkOnly = false) {
         }
     }
 
-    /**
-     * Download and install kstuff.elf to /data/etaHEN/
-     * @param {function(string): void} [log]
-     */
-    async function download_kstuff_to_data(log = () => { }) {
-        const kstuff_url = "kstuff-lite/kstuff.elf";
-        const kstuff_path = "/data/etaHEN/kstuff.elf";
-        
-        try {
-            await log(`Downloading kstuff.elf...`);
-            const response = await fetch(kstuff_url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.arrayBuffer();
-            const byteArray = new Uint8Array(data);
-            await log(`Downloaded ${(byteArray.byteLength / 1024 / 1024).toFixed(2)} MB`);
-            
-            // Write to /data/etaHEN/kstuff.elf
-            await log("Installing to /data/etaHEN/kstuff.elf...");
-            p.writestr(elf_store, kstuff_path);
-            
-            const O_WRONLY = 0x0001;
-            const O_CREAT = 0x0200;
-            const O_TRUNC = 0x0400;
-            let fd = (await chain.syscall(SYS_OPEN, elf_store, O_WRONLY | O_CREAT | O_TRUNC, 0x1B6)).low << 0;
-            
-            if (fd < 0) {
-                throw new Error("Failed to create /data/etaHEN/kstuff.elf (permission denied or directory doesn't exist?)");
-            }
-            
-            try {
-                // Copy data to elf_store first
-                if (elf_store.backing.BYTES_PER_ELEMENT == 1) {
-                    elf_store.backing.set(byteArray);
-                } else {
-                    throw new Error("Unsupported backing array type");
-                }
-                
-                // Write to file in chunks
-                let total_written = 0;
-                let write_ptr = elf_store.add32(0);
-                
-                while (total_written < byteArray.byteLength) {
-                    let to_write = Math.min(0x100000, byteArray.byteLength - total_written);
-                    let bytes_written = (await chain.syscall(SYS_WRITE, fd, write_ptr, to_write)).low << 0;
-                    
-                    if (bytes_written <= 0) {
-                        throw new Error(`Write failed at offset ${total_written}`);
-                    }
-                    
-                    total_written += bytes_written;
-                    write_ptr.add32inplace(bytes_written);
-                    
-                    await log(`Installing: ${((total_written / byteArray.byteLength) * 100).toFixed(1)}%`);
-                }
-                
-                await log(`Kstuff Lite successfully installed to /data/etaHEN/! (${(total_written / 1024 / 1024).toFixed(2)} MB)`);
-                await log("You can now use Kstuff Lite plugins with etaHEN");
-                
-            } finally {
-                await chain.syscall(SYS_CLOSE, fd);
-            }
-            
-        } catch (error) {
-            await log(`Failed to download/install Kstuff: ${error}`);
-            throw error;
-        }
-    }
-
     sessionStorage.removeItem(SESSIONSTORE_ON_LOAD_AUTORUN_KEY);
 
     let ports = wkOnly ? "" : "9020";
@@ -1422,13 +1351,6 @@ async function main(userlandRW, wkOnly = false) {
                         await download_etahen_to_data(updateToastMessage.bind(null, toast), versionPath);
                     } else {
                         throw new Error(`Unknown custom action: ${payload_info.customAction}`);
-                    }
-                } else if (payload_info.customAction2) {
-                    // Handle customAction2 for secondary install actions
-                    if (payload_info.customAction2 === "KSTUFF_INSTALL") {
-                        await download_kstuff_to_data(updateToastMessage.bind(null, toast));
-                    } else {
-                        throw new Error(`Unknown custom action 2: ${payload_info.customAction2}`);
                     }
                 } else {
                     updateToastMessage(toast, `${payload_info.displayTitle}: Fetching...`);
