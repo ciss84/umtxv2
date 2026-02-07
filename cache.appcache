@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 10.04 
+#VERSION 9.14 
 
 CACHE: 
 4.00.js
@@ -21,11 +21,9 @@ index.html
 int64.js
 main.css
 main.js
-np-fake-signin-ps5.elf
 offset.js
 payload_map.js
 psfree.js
-README.md
 rop.js
 rop_slave.js
 Style.css
@@ -36,5 +34,8 @@ utils.js
 NETWORK: 
 
 * 
+
+
+
 
 
