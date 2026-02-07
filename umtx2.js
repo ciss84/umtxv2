@@ -116,12 +116,8 @@ async function runUmtx2Exploit(p, chain, log = async () => { }) {
      */
     function getCoreIndex(mask_addr) {
         let num = p.read4(mask_addr);
-        let position = 0;
-        while (num > 0) {
-            num = num >>> 1;
-            position = position + 1;
-        }
-        return position - 1;
+        if (num === 0) return -1;
+        return Math.floor(Math.log2(num));
     }
 
     const minusOneInt32 = 0xFFFFFFFF;
