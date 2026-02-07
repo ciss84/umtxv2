@@ -6,16 +6,6 @@ const payload_map = [
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
         fileName: "",
         author: "LM LightningMods",
-        projectSource: "https://github.com/ciss84/umtxv2/26b",
-        binarySource: "https://github.com/etaHEN",
-        version: "2.6b Test End 07/02/26",
-        customAction: "ETAHEN_INSTALL"
-    },  
-    {
-        displayTitle: "Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
-        fileName: "",
-        author: "LM LightningMods",
         projectSource: "https://github.com/ciss84/umtxv2/25b",
         binarySource: "https://github.com/etaHEN",
         version: "2.5b",
@@ -42,6 +32,7 @@ const payload_map = [
         customAction: CUSTOM_ACTION_APPCACHE_REMOVE
     }
 ];
+
 
 
 
