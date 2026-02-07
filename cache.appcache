@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 9.18 
+#VERSION 9.15 
 
 CACHE: 
 4.00.js
@@ -13,6 +13,7 @@ CACHE:
 5.50.js
 alert.js
 cache.html
+clean_cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
@@ -33,7 +34,6 @@ utils.js
 NETWORK: 
 
 * 
-
 
 
 
