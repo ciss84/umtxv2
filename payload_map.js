@@ -22,24 +22,24 @@ const payload_map = [
         customAction: "ETAHEN_INSTALL"
     },
     {
-        displayTitle: "Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        displayTitle: "Install etaHEN to /data/etaHEN/",
+        description: "Download etaHEN.bin from host and install to /data/etaHEN/ (one-time setup for offline loading)",
         fileName: "",
-        author: "LM LightningMods",
-        projectSource: "https://github.com/ciss84/umtxv2/24b",
-        binarySource: "https://github.com/etaHEN",
-        version: "2.4b",
-        customAction: "ETAHEN_INSTALL"
+        author: "",
+        projectSource: "",
+        binarySource: "",
+        version: "",
+        customAction: ""
     },  
     {
-        displayTitle: "Install etaHEN to /data/",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        displayTitle: "Install etaHEN to /data/etaHEN",
+        description: "Download etaHEN.bin from host and install to /data/etaHEN/ (one-time setup for offline loading)",
         fileName: "",
-        author: "LM LightningMods",
-        projectSource: "https://github.com/ciss84/umtxv2/24b",
-        binarySource: "https://github.com/etaHEN",
-        version: "2.4b",
-        customAction: "ETAHEN_INSTALL"
+        author: "",
+        projectSource: "",
+        binarySource: "",
+        version: "",
+        customAction: ""
     },   
     {
         displayTitle: "Browser appcache remover",
@@ -52,6 +52,7 @@ const payload_map = [
         customAction: CUSTOM_ACTION_APPCACHE_REMOVE
     }
 ];
+
 
 
 
