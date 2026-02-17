@@ -940,6 +940,9 @@ async function main(userlandRW, wkOnly = false) {
                     // Not in /data/, load from host
                     await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
                     total_sz = await load_payload_into_elf_store_from_local_file("etaHEN.bin");
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await log("parental controls not in /data/, loading from host...", LogLevel.WARN);
+                    total_sz = await load_payload_into_elf_store_from_local_file("parental-controls.bin");
                 }
                 
                 // Send to port 9021 (elfldr) - inline code to avoid hoisting issues

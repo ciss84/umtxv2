@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 9.219 
+#VERSION 9.220 
 
 CACHE: 
 4.00.js
@@ -17,6 +17,7 @@ cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
+etaHEN.bin
 index.html
 int64.js
 main.css
@@ -29,11 +30,6 @@ rop_slave.js
 syscalls.js
 umtx2.js
 utils.js
-24b\etaHEN.bin
-25b\etaHEN.bin
-26b\etaHEN.bin
-kstuff-lite\kstuff.elf
-kstuff167\kstuff.elf
 
 NETWORK: 
 * 
