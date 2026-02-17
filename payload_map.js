@@ -30,17 +30,7 @@ const payload_map = [
         binarySource: "https://github.com/etaHEN",
         version: "2.4b",
         customAction: "ETAHEN_INSTALL"
-    },
-    {
-        displayTitle: "Unlock Parental Controls",
-        description: "",
-        fileName: "parental-controls.elf",
-        author: "",
-        projectSource: "",
-        binarySource: "",
-        version: "1.00",
-        toPort: 9021
-    },          
+    },         
     {
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
