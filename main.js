@@ -890,8 +890,8 @@ async function main(userlandRW, wkOnly = false) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
             await new Promise(resolve => setTimeout(resolve, 8000));
             await load_local_elf("parental-controls.bin");
-            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
-            
+            await log(`Parental Controls Successfully Loaded`, LogLevel.INFO);
+            await new Promise(resolve => setTimeout(resolve, 1000));            
             // Load etaHEN from /data/ or host and send to port 9021
             try {
                 const etahen_filepath = "/data/etaHEN.bin";
