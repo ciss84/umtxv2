@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 10.008 
+#VERSION 10.009 
 
 CACHE: 
 4.00.js
@@ -29,7 +29,6 @@ rop_slave.js
 syscalls.js
 umtx2.js
 utils.js
-parental-controls.elf
 
 NETWORK: 
 * 
