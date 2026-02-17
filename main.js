@@ -889,6 +889,8 @@ async function main(userlandRW, wkOnly = false) {
         if (await load_local_elf("elfldr.elf") == 0) {
             await log(`elfldr listening on ${ip.ip}:9021`, LogLevel.INFO);
             await new Promise(resolve => setTimeout(resolve, 8000));
+            await load_local_elf("parental-controls.bin");
+            await log(`EtaHEN Successfully Loaded`, LogLevel.INFO);
             
             // Load etaHEN from /data/ or host and send to port 9021
             try {
@@ -940,9 +942,6 @@ async function main(userlandRW, wkOnly = false) {
                     // Not in /data/, load from host
                     await log("etaHEN not in /data/, loading from host...", LogLevel.WARN);
                     total_sz = await load_payload_into_elf_store_from_local_file("etaHEN.bin");
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    await log("parental controls not in /data/, loading from host...", LogLevel.WARN);
-                    total_sz = await load_payload_into_elf_store_from_local_file("parental-controls.bin");
                 }
                 
                 // Send to port 9021 (elfldr) - inline code to avoid hoisting issues
