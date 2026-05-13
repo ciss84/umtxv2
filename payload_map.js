@@ -35,8 +35,8 @@ const payload_map = [
         displayTitle: "Install Kstuff to /data/etaHEN",
         description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
         fileName: "",
-        author: "",
-        projectSource: "https://github.com/ciss84/umtxv2/kstuff",
+        author: "Echostech",
+        projectSource: "https://github.com/ciss84/umtxv2/kstuff-lite",
         binarySource: "https://github.com/etaHEN",
         version: "1.04",
         customAction: "ETAHEN_INSTALL"
