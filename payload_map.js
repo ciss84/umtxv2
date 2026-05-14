@@ -30,7 +30,7 @@ const payload_map = [
         binarySource: "https://github.com/etaHEN",
         version: "2.4b",
         customAction: "ETAHEN_INSTALL"
-    },            
+    },         
     {
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
