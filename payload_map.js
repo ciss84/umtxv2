@@ -33,7 +33,7 @@ const payload_map = [
     },    
     {
         displayTitle: "Install Kstuff to /data/etaHEN",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
+        description: "Download kstuff-lite.elf from host and install to /data/etaHEN (one-time setup for offline loading)",
         fileName: "",
         author: "Echostech",
         projectSource: "https://github.com/ciss84/umtxv2/kstuff-lite",
