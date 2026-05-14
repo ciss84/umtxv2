@@ -30,17 +30,7 @@ const payload_map = [
         binarySource: "https://github.com/etaHEN",
         version: "2.4b",
         customAction: "ETAHEN_INSTALL"
-    }, 
-    {
-        displayTitle: "Install Kstuff to /data/etaHEN",
-        description: "Download etaHEN.bin from host and install to /data/ (one-time setup for offline loading)",
-        fileName: "",
-        author: "",
-        projectSource: "https://github.com/ciss84/umtxv2/kstuff",
-        binarySource: "https://github.com/etaHEN",
-        version: "1.04",
-        customAction: "ETAHEN_INSTALL"
-    },             
+    },            
     {
         displayTitle: "Browser appcache remover",
         description: "Deletes for only the current user in webkit-only mode",
