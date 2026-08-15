@@ -548,6 +548,7 @@ async function main(userlandRW, wkOnly = false) {
         await krw.write4(krw.procUcredAddr.add32(0x0C), 0); // cr_svuid
         await krw.write4(krw.procUcredAddr.add32(0x10), 1); // cr_ngroups
         await krw.write4(krw.procUcredAddr.add32(0x14), 0); // cr_rgid
+        await krw.write4(krw.procUcredAddr.add32(0x18), 0); // cr_svgid (Y2JB)
 
         // Escalate sony privs
         await krw.write8(krw.procUcredAddr.add32(0x58), new int64(0x00000013, 0x48010000)); // cr_sceAuthId
@@ -572,6 +573,7 @@ async function main(userlandRW, wkOnly = false) {
         let is_in_sandbox = await chain.syscall(SYS_IS_IN_SANDBOX);
         await log("Jailbreaking... (in sandbox: " + is_in_sandbox + ")" , LogLevel.INFO);
         let rootvnode = await krw.read8(get_kaddr(OFFSET_KERNEL_ROOTVNODE));
+        await krw.write8(krw.procFdAddr.add32(0x08), rootvnode); // fd_cdir (Y2JB)
         await krw.write8(krw.procFdAddr.add32(0x10), rootvnode); // fd_rdir
         await krw.write8(krw.procFdAddr.add32(0x18), rootvnode); // fd_jdir
 
