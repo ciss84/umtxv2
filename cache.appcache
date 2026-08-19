@@ -1,5 +1,5 @@
 CACHE MANIFEST 
-#VERSION 10.016 
+#VERSION 4.00 
 
 CACHE: 
 4.00.js
@@ -11,12 +11,13 @@ CACHE:
 5.02.js
 5.10.js
 5.50.js
-Style.css
 alert.js
 cache.html
 config.js
 custom_host_stuff.js
 elfldr.elf
+elfldrori.elf
+etaHEN.bin
 index.html
 int64.js
 main.css
@@ -24,11 +25,19 @@ main.js
 offset.js
 payload_map.js
 psfree.js
+README.md
 rop.js
 rop_slave.js
+Style.css
 syscalls.js
 umtx2.js
 utils.js
+24b\etaHEN.bin
+25b\etaHEN.bin
+26b\etaHEN.bin
+kstuff-lite\kstuff.elf
+kstuff167\kstuff.elf
+OnionHEN\etaHEN.bin
 
 NETWORK: 
 * 
